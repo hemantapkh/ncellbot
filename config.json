@@ -1,0 +1,19 @@
+{
+    "telegram": {    
+        "botToken": null,
+        
+        "adminList": [
+            null
+        ],
+
+        "channelId": "-1001270853324", 
+
+        "feedbackChatId": null
+    },
+
+    "facebook": null,
+
+    "language": "language.json",
+
+    "database": "database.sqlite"
+}
