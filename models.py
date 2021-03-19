@@ -1,4 +1,5 @@
 import sqlite3
+import hashlib
 
 class dbQuery():
     def __init__(self, db):
@@ -14,7 +15,7 @@ class dbQuery():
             
             return user[0] if user!=None else None
 
-    #: Add the telegram or facebook user into the database and give them unique UserId
+    #: Add the telegram or facebook user into the database and give them a unique UserId
     def setUserId(self, telegramId='NULL', facebookId='NULL'):
         with sqlite3.connect(self.db) as con:
             cursor = con.cursor()
@@ -36,11 +37,10 @@ class dbQuery():
             else:
                 accountId = cursor.execute(f'SELECT * FROM accounts WHERE ownerId={userId} AND msisdnHash="{msisdnHash}"').fetchone()[0]
                 cursor.execute(f'UPDATE accounts SET token="{token}" WHERE id={accountId} AND ownerId={userId}')
-                accountId = cursor.lastrowid
                 con.commit()
 
-            #!? Return the accountId of the last account to set it as default account
-            return accountId
+        #!? Set the added account as the default account
+        self.setDefaultAc(userId, accountId)    
 
     #: Update the token of existing user's account
     def updateAccount(self, userId, accountId, token):
@@ -54,54 +54,56 @@ class dbQuery():
     def getAllAccounts(self):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
-            user = cur.execute(f'SELECT * FROM users WHERE telegramId NOT NULL').fetchall()
+            users = cur.execute(f'SELECT * FROM users WHERE telegramId NOT NULL').fetchall()
             con.commit()
 
-            return user
+            return users if users else None
 
     #: Gel all accounts of certain user
-    def getAccount(self, userId):
+    def getAccounts(self, userId):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
-
-            account = cur.execute(f'SELECT * FROM accounts WHERE ownerId={userId}').fetchall()
+            accounts = cur.execute(f'SELECT * FROM accounts WHERE ownerId={userId}').fetchall()
             con.commit()
 
-            return account
+            return accounts if accounts else None
     
-    #: Delete the user's account
+    #: Delete a user's account
     def deleteAccount(self, userId, accountId):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
             defaultAcId = self.getSetting(userId, 'defaultAcId')
-            account = cur.execute(f'DELETE FROM accounts WHERE ownerId={userId} AND id={accountId}')
+            cur.execute(f'DELETE FROM accounts WHERE ownerId={userId} AND id={accountId}')
             con.commit()
 
             #!? If the deleted account is the default account, set another account as a default account
-            if accountId == str(defaultAcId):
-                lastAccountId = self.getAccount(userId)
+            if str(accountId) == str(defaultAcId):
+                lastAccountId = self.getAccounts(userId)
+                
                 #!? If any accounts is left, make the last account as a default account. Else, make default account empty.
-                if lastAccountId != []:
+                if lastAccountId:
                     lastAccountId = lastAccountId[-1][0]
-                self.setSetting(userId, 'defaultAcId', lastAccountId)
-
-            return account
-
+                    self.setSetting(userId, 'defaultAcId', lastAccountId)
+                #!? If no account left, make the default account NULL
+                else:
+                    self.setSetting(userId, 'defaultAcId', None)
+                
     #: Get the default account of the user
     def getDefaultAc(self, userId):
         with sqlite3.connect(self.db) as con:
-            cur = con.cursor()
-            try:
-                #!? If no default account is set, return None
-                defaultAcId = cur.execute(f'SELECT defaultAcId FROM settings WHERE ownerId={userId} limit 1').fetchone()[0]
-            except ValueError:
+            cur = con.cursor()  
+            defaultAcId = self.getSetting(userId, 'defaultAcId')
+
+            #!? If defaultAcId, return the account
+            if defaultAcId:
+                account = cur.execute(f'SELECT * FROM accounts WHERE ownerId={userId} AND id={defaultAcId}').fetchone()
+                con.commit()
+
+                return account      
+            else:
                 return None
-            account = cur.execute(f'SELECT * FROM accounts WHERE ownerId={userId} AND id={defaultAcId}').fetchone()
-            con.commit()
 
-            return account
-
-    #: Set the user's default account
+    #: Set a user's default account
     def setDefaultAc(self, userId, accountId):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
@@ -122,23 +124,35 @@ class dbQuery():
     def setSetting(self, userId, var, value):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
-            cur.execute(f'INSERT OR IGNORE INTO settings (ownerId, {var}) VALUES ({userId}, "{value}")')
-            cur.execute(f'UPDATE settings SET {var}="{value}" WHERE ownerId={userId}')
+
+            #!? If value is None, put value as NULL else "{string}"
+            value = f'"{value}"' if value else 'NULL'
+            cur.execute(f'INSERT OR IGNORE INTO settings (ownerId, {var}) VALUES ({userId}, {value})')
+            cur.execute(f'UPDATE settings SET {var}={value} WHERE ownerId={userId}')
             con.commit()
 
     #: Get the user's temporary variable
     def getTempdata(self, userId, var):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
-            account = cur.execute(f'SELECT {var} FROM tempdata WHERE ownerId={userId} limit 1').fetchone()
+            data = cur.execute(f'SELECT {var} FROM tempdata WHERE ownerId={userId} limit 1').fetchone()
             con.commit()
 
-            return account[0] if account!=None else None
+            return data[0] if data!=None else None
     
     #: Set the user's temporary variable
     def setTempdata(self, userId, var, value):
         with sqlite3.connect(self.db) as con:
             cur = con.cursor()
-            cur.execute(f'INSERT OR IGNORE INTO tempdata (ownerId, {var}) VALUES ({userId}, "{value}")')
-            cur.execute(f'UPDATE tempdata SET {var}="{value}" WHERE ownerId={userId}')
+
+            #!? If value is None, put value as NULL else "{string}"
+            value = f'"{value}"' if value else 'NULL'
+            cur.execute(f'INSERT OR IGNORE INTO tempdata (ownerId, {var}) VALUES ({userId}, {value})')
+            cur.execute(f'UPDATE tempdata SET {var}={value} WHERE ownerId={userId}')
             con.commit()
+
+#: Generate SHA Hash of a string
+def genHash(string):
+	result = hashlib.sha512(str(string).encode()) 
+	  
+	return result.hexdigest()
