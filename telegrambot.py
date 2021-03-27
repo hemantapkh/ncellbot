@@ -362,10 +362,10 @@ def genMarkup_subscribedPlans(message):
         for i in response['queryAllProductsResponse']['productList']:
             if len(i['name']) >= 20:
                 markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_productInfo:{i['id']}"))
-                markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivate:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
+                markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
                 
             else:
-                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_productInfo:{i['id']}"), telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate' ,callback_data=f"cb_deactivate:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
+                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_productInfo:{i['id']}"), telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate' ,callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
     
         markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
         
@@ -631,7 +631,7 @@ def callback_query(call):
 
     #! Remove action for /accounts
     elif call.data == 'cb_removeAccount':
-        sent = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount'], reply_markup=genMarkup_accounts(message=call, action='remove'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount'], reply_markup=genMarkup_accounts(message=call, action='remove'))
     
     #! Select default account
     elif call.data[:17] == 'cb_selectAccount_':
@@ -771,7 +771,7 @@ def callback_query(call):
             markup.one_time_keyboard=True
             markup.row_width = 2
 
-            markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivate:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
+            markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
             markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
         
             text = f"<b>{productInfo['name']}</b>\n\n<em>{productInfo['description']}\n\nSubscribed On: {productInfo['subscriptionDate']}\nExpiry Date: {productInfo['expiryDate']}\n</em>"
@@ -779,6 +779,21 @@ def callback_query(call):
 
         else:
             bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+
+    #: Deactivate product
+    elif call.data[:17] == 'cb_deactivatePlan':
+        subscriptionCode = call.data[18:]
+
+        userId = dbSql.getUserId(call.from_user.id)
+
+        account = dbSql.getDefaultAc(userId)
+        acc = ncellapp.ncell(token=account[1])
+
+        response = acc.unsubscribeProduct(subscriptionCode)
+        if response.responseCode == '00':
+            bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, language['somethingWrong']['en'], show_alert=True)
 
 @bot.message_handler(content_types=['text'])
 def replyKeyboard(message):
