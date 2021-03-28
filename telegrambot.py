@@ -57,7 +57,7 @@ def cancelReplyKeyboard():
     return cancelKeyboard
 
 #: Main reply keyboard
-def mainReplyKeboard(message):
+def mainReplyKeyboard(message):
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     button1 = telebot.types.KeyboardButton(text='👥 Accounts')
     button2 = telebot.types.KeyboardButton(text='➕ Register')
@@ -104,16 +104,16 @@ def start(message):
     userId = dbSql.getUserId(telegramId)
     if userId:
         #!? If user is already in the database
-        bot.send_message(message.from_user.id, text=language['greet']['en'], reply_markup=mainReplyKeboard(message))
+        bot.send_message(message.from_user.id, text=language['greet']['en'], reply_markup=mainReplyKeyboard(message))
     else:
         #!? If not, add the user in the database
         dbSql.setUserId(telegramId)
-        bot.send_message(message.from_user.id, text=language['greetFirstTime']['en'], reply_markup=mainReplyKeboard(message))
+        bot.send_message(message.from_user.id, text=language['greetFirstTime']['en'], reply_markup=mainReplyKeyboard(message))
 
 #! Ping pong
 @bot.message_handler(commands=['ping'])
 def ping(message):
-    bot.send_message(message.from_user.id, text=language['ping']['en'], reply_markup=mainReplyKeboard(message))
+    bot.send_message(message.from_user.id, text=language['ping']['en'], reply_markup=mainReplyKeyboard(message))
 
 @bot.message_handler(commands=['register'])
 def register(message):
@@ -158,7 +158,7 @@ def getOtp(message, called=False):
             bot.register_next_step_handler(sent, getOtp)
         
         else:
-            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeboard(message))
+            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeyboard(message))
 
 def getToken(message):
     if message.text == '❌ Cancel':
@@ -174,7 +174,7 @@ def getToken(message):
             dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
             #!? Remove the register msisdn from the database
             dbSql.setTempdata(userId,'registerMsisdn', None)
-            bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'], reply_markup=mainReplyKeboard(message))
+            bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
         
         #! OTP attempts exceed
         elif response.responseDescCode == 'OTP2002':
@@ -219,7 +219,7 @@ def refreshTok(message):
 @bot.message_handler(commands=['accounts'])
 def accounts(message):
     markup = genMarkup_accounts(message, action='select')
-    bot.send_message(message.from_user.id, text= language['chooseAccounts']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
+    bot.send_message(message.from_user.id, text= language['selectActionAndAccount']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
 
 #: Markup for accounts, return None if accounts is None
 def genMarkup_accounts(message, action):
@@ -356,6 +356,7 @@ def genMarkup_subscribedPlans(message):
 
         ac = ncellapp.ncell(account[1])
         response = ac.subscribedProducts().content
+
         responseData = base64.b64encode(str(response['queryAllProductsResponse']['productList']).encode()).decode()
         dbSql.setTempdata(userId, 'responseData', responseData)
 
@@ -435,7 +436,7 @@ def sendFreeSms2(message):
         acc = ncellapp.ncell(token=account[1])
         
         response = acc.sendFreeSms(msisdn, message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeboard())
+        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
 
 def sendPaidSms(message):
     if message.text == '❌ Cancel':
@@ -458,7 +459,7 @@ def sendPaidSms2(message):
         acc = ncellapp.ncell(token=account[1])
         
         response = acc.sendSms(msisdn, message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeboard())
+        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
 
 #: Self recharge
 @bot.message_handler(commands=['selfrecharge'])
@@ -522,7 +523,7 @@ def selfPinRecharge(message):
 
         acc = ncellapp.ncell(token=account[1])
         response = acc.selfRecharge(message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeboard())
+        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
 
 #: Self online recharge
 def selfOnlineRecharge(message):
@@ -567,7 +568,7 @@ def rechargeOthersPin2(message):
         
         response = acc.recharge(msisdn, message.text)
 
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeboard())
+        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
 
 #: Recharge others online
 def rechargeOthersOnline(message):
@@ -598,11 +599,11 @@ def rechargeOthersOnline2(message):
                 [telebot.types.InlineKeyboardButton(text='Click here and recharge your phone', url=response.content['url'])],
             ]))
         else:
-            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeboard())
+            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeyboard(message))
 
 def cancelKeyboardHandler(message):
     userId = dbSql.getUserId(message.from_user.id)
-    bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeboard(message))
+    bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -627,11 +628,11 @@ def callback_query(call):
 
    #! Select action for /accounts     
     elif call.data == 'cb_selectAccount':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount'], reply_markup=genMarkup_accounts(message=call, action='select'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount']['en'], reply_markup=genMarkup_accounts(message=call, action='select'))
 
     #! Remove action for /accounts
     elif call.data == 'cb_removeAccount':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount'], reply_markup=genMarkup_accounts(message=call, action='remove'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount']['en'], reply_markup=genMarkup_accounts(message=call, action='remove'))
     
     #! Select default account
     elif call.data[:17] == 'cb_selectAccount_':
@@ -724,7 +725,7 @@ def callback_query(call):
         if dbSql.getDefaultAc(userId):
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['rechargeTo']['en'], reply_markup=genMarkup_rechargeTo())
         else:
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['noAccounts']['en'], reply_markup=mainReplyKeboard())
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['noAccounts']['en'], reply_markup=mainReplyKeyboard(call))
 
     #! Send free SMS
     elif call.data == 'cb_freeSms':
@@ -734,15 +735,15 @@ def callback_query(call):
     #! Send paid SMS
     elif call.data == 'cb_paidSms':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        paidsms(message)
+        paidsms(message=call)
     
     #! Subscribed plans
     elif call.data == 'cb_subscribedPlans':
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'], reply_markup=genMarkup_subscribedPlans(call))
 
-    #! Go back to plan catagory
-    elif call.data == 'cb_backToPlans':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectPlanType']['en'], reply_markup=genMarkup_plans(call) )
+    #! Recommended plans
+    elif call.data == 'cb_recommendedPlans':
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'], reply_markup=genMarkup_recommendedPlans(call))
 
     #! Deactivation not allowed
     elif call.data == 'cb_deactivationNotAllowed':
@@ -795,6 +796,25 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, language['somethingWrong']['en'], show_alert=True)
 
+    #: Deactivate product
+    elif call.data[:15] == 'cb_activatePlan':
+        subscriptionCode = call.data[16:]
+
+        userId = dbSql.getUserId(call.from_user.id)
+
+        account = dbSql.getDefaultAc(userId)
+        acc = ncellapp.ncell(token=account[1])
+
+        response = acc.subscribeProduct(subscriptionCode)
+        if response.responseCode == '00':
+            bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, language['somethingWrong']['en'], show_alert=True)
+
+    #! Go back to plan catagory
+    elif call.data == 'cb_backToPlans':
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectPlanType']['en'], reply_markup=genMarkup_plans(call) )
+
 @bot.message_handler(content_types=['text'])
 def replyKeyboard(message):
     if message.text == '➕ Register':
@@ -823,7 +843,7 @@ def replyKeyboard(message):
         bot.send_message(message.from_user.id, text)
 
     elif message.text in ['❌ Cancel','/cancel'] :
-        bot.send_message(message.from_user.id, language['cancelled']['en'], reply_markup=mainReplyKeboard(message))
+        bot.send_message(message.from_user.id, language['cancelled']['en'], reply_markup=mainReplyKeyboard(message))
 
     elif message.text in ['⁉️ Help', '/help']:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])
