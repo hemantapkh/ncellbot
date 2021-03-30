@@ -335,10 +335,9 @@ def genMarkup_plans(message):
         markup.one_time_keyboard=True
         markup.row_width = 2
 
-        markup.add(telebot.types.InlineKeyboardButton('Subscribed' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('Recommended' ,callback_data='cb_recommendedPlans'))    
-        markup.add(telebot.types.InlineKeyboardButton('Data' ,callback_data=f'cb_dataPlans'))
-        markup.add(telebot.types.InlineKeyboardButton('Voice and Sms' ,callback_data='cb_voiceAndSmsPlans'), telebot.types.InlineKeyboardButton('VAS' ,callback_data='cb_vasPlans'))    
-        markup.add(telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+        markup.add(telebot.types.InlineKeyboardButton('Subscribed Plans', callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('Data Plans', callback_data='cb_dataPlans'))    
+        markup.add(telebot.types.InlineKeyboardButton('Voice and Sms', callback_data='cb_plans:voice:'), telebot.types.InlineKeyboardButton('VA Services' ,callback_data='cb_plans:vas:'))    
+        markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
 
         return markup
     else:
@@ -360,20 +359,72 @@ def genMarkup_subscribedPlans(message):
         responseData = base64.b64encode(str(response['queryAllProductsResponse']['productList']).encode()).decode()
         dbSql.setTempdata(userId, 'responseData', responseData)
 
+        shortButtons =  []
         for i in response['queryAllProductsResponse']['productList']:
-            if len(i['name']) >= 20:
-                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_productInfo:{i['id']}"))
-                markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
-                
+            if len(i['name']) <= 15:
+                shortButtons.append(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
             else:
-                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_productInfo:{i['id']}"), telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate' ,callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
-    
+                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+        
+        markup.add(*shortButtons)
         markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
         
         return markup
     else:
         return None
 
+#: Markup for dataplans catagory
+def genMarkup_dataPlans():
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.one_time_keyboard=True
+    markup.row_width = 2
+
+    markup.add(telebot.types.InlineKeyboardButton('Social Packs' ,callback_data='cb_plans:data:34'), telebot.types.InlineKeyboardButton('Night Data Pack' ,callback_data='cb_plans:data:20'))    
+    markup.add(telebot.types.InlineKeyboardButton('Popular Data Services' ,callback_data='cb_plans:data:23'))
+    markup.add(telebot.types.InlineKeyboardButton('Non Stop Offers' ,callback_data='cb_plans:data:21'), telebot.types.InlineKeyboardButton('Get More On 4G' ,callback_data='cb_plans:data:19'))    
+    markup.add(telebot.types.InlineKeyboardButton('Always On Data Packs' ,callback_data='cb_plans:data:11'))
+    markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+        
+    return markup
+
+#: Markup for products
+def genMarkup_products(message):
+    userId = dbSql.getUserId(message.from_user.id)
+    account = dbSql.getDefaultAc(userId)
+
+    if accounts:
+        planType = message.data.split(':')[1]
+        catagoryId = message.data.split(':')[2]
+
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.one_time_keyboard=True
+        markup.row_width = 2
+
+        ac = ncellapp.ncell(account[1])
+
+        if planType == 'data':
+            response = ac.dataPlans(catagoryId).content
+        elif planType == 'voice':
+            response = ac.voiceAndSmsPlans(catagoryId).content
+        elif planType == 'vas':
+            response = ac.vasPlans(catagoryId).content
+
+        responseData = base64.b64encode(str(response['availablePackages']).encode()).decode()
+        dbSql.setTempdata(userId, 'responseData', responseData)
+
+        for item in response['availablePackages']:
+            productName = item['displayInfo']['displayName'].replace('Facebook','FB').replace('YouTube','YT').replace('TikTok','TT')
+            price = item['productOfferingPrice']['price'].split('.')[0]
+            productName += f" (Rs. {price})"
+
+            markup.add(telebot.types.InlineKeyboardButton(text=productName, callback_data=f"cb_productInfo:{item['id']}:{planType}:{catagoryId}"))
+
+        markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_dataPlans' if planType=='data' else 'cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+        
+        return markup
+    else:
+        return None
+        
 #: Free SMS
 @bot.message_handler(commands=['freesms'])
 def freeSms(message):
@@ -736,22 +787,14 @@ def callback_query(call):
     elif call.data == 'cb_paidSms':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         paidsms(message=call)
-    
+
     #! Subscribed plans
     elif call.data == 'cb_subscribedPlans':
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'], reply_markup=genMarkup_subscribedPlans(call))
 
-    #! Recommended plans
-    elif call.data == 'cb_recommendedPlans':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'], reply_markup=genMarkup_recommendedPlans(call))
-
-    #! Deactivation not allowed
-    elif call.data == 'cb_deactivationNotAllowed':
-        bot.answer_callback_query(call.id, language['deactivationNotAllowed']['en'])
-
-    #! Product info
-    elif call.data[:14] == 'cb_productInfo':
-        productId = call.data[15:]
+    #! Subscribed product info
+    elif call.data[:24] == 'cb_subscribedProductInfo':
+        productId = call.data.split(':')[1]
         userId = dbSql.getUserId(call.from_user.id)
 
         #! Response data is stored in database in b64 encoded form
@@ -781,22 +824,80 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, language['somethingWrong']['en'])
 
+    #! Data plans Catagory
+    elif call.data == 'cb_dataPlans':
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectPlanType']['en'], reply_markup=genMarkup_dataPlans())
+
+    #! Product list
+    elif call.data[:8] == 'cb_plans':
+        markup = genMarkup_products(call)
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectProduct']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
+    
+    #! Product info
+    elif call.data[:14] == 'cb_productInfo':
+        productId = call.data.split(':')[1]
+        userId = dbSql.getUserId(call.from_user.id)
+
+        #! Response data is stored in database in b64 encoded form
+        encodedResponse = dbSql.getTempdata(userId, 'responseData')
+        decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
+
+        response = ast.literal_eval(decodedResponse)
+
+       #! Iterate through the response to find the product 
+        productInfo = None
+        for i in response:
+            if i['id'] == productId:
+                productInfo = i
+                break
+        
+        if productInfo:
+            planType = call.data.split(':')[2]
+            catagoryId = call.data.split(':')[3]
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+            markup.row_width = 2
+
+            markup.add(telebot.types.InlineKeyboardButton(text='Activate' if productInfo['isBalanceSufficient'] else '⛔ Activate', callback_data=f"cb_activatePlan:{productInfo['techInfo']['subscriptionCode']}" if productInfo['isBalanceSufficient'] else 'cb_noEnoughBalanceToSub'))
+            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data=f'cb_plans:{planType}:{catagoryId}'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+
+            summary = '</em>\nSummery:\n<em>' if productInfo['accounts'] else ''
+            
+            for i in productInfo['accounts']:
+                summary += f"👉 {i['name']} {i['amount']} {i['amountUom']} valid for {i['validity']}{i['validityUom']}\n"
+            
+            summary += f"\n💰 {productInfo['productOfferingPrice']['priceUom']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['price']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['priceType']}"
+
+            text = f"<b>{productInfo['displayInfo']['displayName']}</b>\n\n<em>{productInfo['displayInfo']['description']}\n{summary}</em>"
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+
+        else:
+            bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+
+    #! Deactivation not allowed
+    elif call.data == 'cb_deactivationNotAllowed':
+        bot.answer_callback_query(call.id, language['deactivationNotAllowed']['en'], show_alert=True)
+
+    #! No enough balance to subscribe
+    elif call.data == 'cb_noEnoughBalanceToSub':
+        bot.answer_callback_query(call.id, language['noEnoughBalanceToSub']['en'], show_alert=True)
+
     #: Deactivate product
     elif call.data[:17] == 'cb_deactivatePlan':
         subscriptionCode = call.data[18:]
-
         userId = dbSql.getUserId(call.from_user.id)
 
         account = dbSql.getDefaultAc(userId)
         acc = ncellapp.ncell(token=account[1])
 
         response = acc.unsubscribeProduct(subscriptionCode)
+
         if response.responseCode == '00':
             bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
         else:
-            bot.answer_callback_query(call.id, language['somethingWrong']['en'], show_alert=True)
+            bot.answer_callback_query(call.id, text=f"{language['error']['en']}\n\n{response.responseDesc}", show_alert=True)
 
-    #: Deactivate product
+    #: Activate product
     elif call.data[:15] == 'cb_activatePlan':
         subscriptionCode = call.data[16:]
 
@@ -806,10 +907,11 @@ def callback_query(call):
         acc = ncellapp.ncell(token=account[1])
 
         response = acc.subscribeProduct(subscriptionCode)
+
         if response.responseCode == '00':
-            bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
+            bot.answer_callback_query(call.id, language['activationSuccessful']['en'], show_alert=True)
         else:
-            bot.answer_callback_query(call.id, language['somethingWrong']['en'], show_alert=True)
+            bot.answer_callback_query(call.id, text=f"{language['error']['en']}\n\n{response.responseDesc}", show_alert=True)
 
     #! Go back to plan catagory
     elif call.data == 'cb_backToPlans':
