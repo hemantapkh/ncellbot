@@ -1,6 +1,20 @@
 {
     "telegram": {    
         "botToken": null,
+
+        "connectionType": "polling",
+
+        "webhookOptions": {
+            "webhookHost": null,
+
+            "webhookPort": null,
+
+            "webhookListen": "0.0.0.0",
+
+            "sslCertificate": null,
+
+            "sslPrivateKey": null
+        },
         
         "adminList": [
             null
@@ -8,12 +22,14 @@
 
         "channelId": "-1001270853324", 
 
-        "feedbackChatId": null
+        "feedbackChatId": null,
+
+        "errorLog": "telegram.errors.logs"
     },
 
     "facebook": null,
 
-    "language": "language.json",
+    "database": "database.sqlite",
 
-    "database": "database.sqlite"
+    "language": "language.json"
 }
