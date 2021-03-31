@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Logs
+telegram.errors.logs
+
+# Configurations
+config.json
