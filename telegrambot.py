@@ -1,8 +1,8 @@
-import flask
 import telebot
 import ncellapp
-import json, ast, logging
-import inspect, base64, time
+from aiohttp import web
+import ast, inspect, logging
+import json, base64, time, ssl
 
 import models
 
@@ -23,27 +23,21 @@ language = json.load(open(config['language']))
 bot = telebot.TeleBot(config['telegram']['botToken'], parse_mode='HTML')
 
 #! Configuration for webhook
-if config['telegram']['connectionType'] == 'webhook':
-    webhookBaseUrl = "https://%s:%s" % (config['telegram']['webhookOptions']['webhookHost'], config['telegram']['webhookOptions']['webhookPort'])
-    webhookUrlPath = "/%s/" % (config['telegram']['botToken'])
+webhookBaseUrl = f"https://{config['telegram']['webhookOptions']['webhookHost']}:{config['telegram']['webhookOptions']['webhookPort']}"
+webhookUrlPath = f"/{config['telegram']['botToken']}/"
 
-    app = flask.Flask(__name__)
+app = web.Application()
 
-    #: Empty webserver index, return nothing, just http 200
-    @app.route('/', methods=['GET', 'HEAD'])
-    def index():
-        return ''
+async def handle(request):
+    if request.match_info.get('token') == bot.token:
+        request_body_dict = await request.json()
+        update = telebot.types.Update.de_json(request_body_dict)
+        bot.process_new_updates([update])
+        return web.Response()
+    else:
+        return web.Response(status=403)
 
-    #: Process webhook calls
-    @app.route(webhookUrlPath, methods=['POST'])
-    def webhook():
-        if flask.request.headers.get('content-type') == 'application/json':
-            json_string = flask.request.get_data().decode('utf-8')
-            update = telebot.types.Update.de_json(json_string)
-            bot.process_new_updates([update])
-            return ''
-        else:
-            flask.abort(403)
+app.router.add_post('/{token}/', handle)
 
 #: Check if the user is subscribed or not, returns True if subscribed
 def isSubscribed(message, sendMessage=True):
@@ -980,10 +974,10 @@ def replyKeyboard(message):
     else:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])
 
+#: Polling
 if config['telegram']['connectionType'] == 'polling':
     #! Remove previous webhook if exists
     bot.remove_webhook()
-    
     while True:
         try:
             bot.polling(none_stop=True)
@@ -992,7 +986,7 @@ if config['telegram']['connectionType'] == 'polling':
             logger.error(e, exc_info=True)
             #! Printing the error
             loggerConsole.error(e, exc_info=True)
-
+#: Webhook
 elif config['telegram']['connectionType'] == 'webhook':
     time.sleep(1)
 
@@ -1000,8 +994,14 @@ elif config['telegram']['connectionType'] == 'webhook':
     bot.set_webhook(url=webhookBaseUrl + webhookUrlPath,
                     certificate=open(config['telegram']['webhookOptions']['sslCertificate'], 'r'))
 
-    #! Start flask server
-    app.run(host=config['telegram']['webhookOptions']['webhookListen'],
-            port=config['telegram']['webhookOptions']['webhookPort'],
-            ssl_context=(config['telegram']['webhookOptions']['sslCertificate'], config['telegram']['webhookOptions']['sslPrivatekey']),
-            threaded=True)
+    #! Build ssl context
+    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    context.load_cert_chain(config['telegram']['webhookOptions']['sslCertificate'], config['telegram']['webhookOptions']['sslPrivatekey'])
+
+    #! Start aiohttp server
+    web.run_app(
+        app,
+        host=config['telegram']['webhookOptions']['webhookListen'],
+        port=config['telegram']['webhookOptions']['webhookPort'],
+        ssl_context=context,
+    )
