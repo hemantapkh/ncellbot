@@ -28,6 +28,7 @@ webhookUrlPath = f"/{config['telegram']['botToken']}/"
 
 app = web.Application()
 
+#: Process webhook calls
 async def handle(request):
     if request.match_info.get('token') == bot.token:
         request_body_dict = await request.json()
@@ -114,8 +115,17 @@ def mainReplyKeyboard(message):
         keyboard.row(button10, button3)
         keyboard.row(button11, button12)
 
-    return keyboard 
-     
+    return keyboard
+
+#: Cancel handler
+def cancelKeyboardHandler(message):
+    userId = dbSql.getUserId(message.from_user.id)
+    bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
+
+#: After refresh function to update the token after refreshing it
+def autoRefreshToken(userId, token): 
+    dbSql.updateAccount(userId,dbSql.getSetting(userId, 'defaultAcId'), token)
+   
 @bot.message_handler(commands=['start'])
 def start(message):
     telegramId = message.from_user.id
@@ -220,19 +230,6 @@ def genMarkup_invalidOtp(reEnter=True):
 
     return markup
 
-@bot.message_handler(commands=['refreshTok'])
-def refreshTok(message): 
-    userId = dbSql.getUserId(message.from_user.id)
-    account = dbSql.getDefaultAc(userId)
-    if account:
-        acc = ncellapp.ncell(token=account[1])
-        if acc.refreshToken().responseCode == '200':
-            dbSql.updateAccount(userId,dbSql.getSetting(userId, 'defaultAcId'), acc.token)
-            bot.send_message(message.from_user.id, 'Token refreshed Successfully.')
-
-        else:
-            bot.send_message(message.from_user.id, 'Token refreshed failled.')
-
 #: Manage accounts
 @bot.message_handler(commands=['accounts'])
 def accounts(message):
@@ -310,7 +307,7 @@ def balance(message):
         account = dbSql.getDefaultAc(userId)
         
         if account:
-            acc = ncellapp.ncell(token=account[1]) 
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
             balance = acc.viewBalance()
             bot.send_message(message.from_user.id, f'{balance.content}')
             
@@ -325,7 +322,7 @@ def profile(message):
         account = dbSql.getDefaultAc(userId)
 
         if account:
-            acc = ncellapp.ncell(token=account[1])
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
             balance = acc.viewProfile()
             bot.send_message(message.from_user.id, f'{balance.content}')
 
@@ -371,7 +368,7 @@ def genMarkup_subscribedPlans(message):
         markup.one_time_keyboard=True
         markup.row_width = 2
 
-        ac = ncellapp.ncell(account[1])
+        ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         response = ac.subscribedProducts().content
 
         responseData = base64.b64encode(str(response['queryAllProductsResponse']['productList']).encode()).decode()
@@ -418,7 +415,7 @@ def genMarkup_products(message):
         markup.one_time_keyboard=True
         markup.row_width = 2
 
-        ac = ncellapp.ncell(account[1])
+        ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
         if planType == 'data':
             response = ac.dataPlans(catagoryId).content
@@ -502,7 +499,7 @@ def sendFreeSms2(message):
         userId = dbSql.getUserId(message.from_user.id)
         msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.sendFreeSms(msisdn, message.text)
         bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
@@ -525,7 +522,7 @@ def sendPaidSms2(message):
         msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
 
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.sendSms(msisdn, message.text)
         bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
@@ -590,7 +587,7 @@ def selfPinRecharge(message):
         userId = dbSql.getUserId(message.from_user.id)
         account = dbSql.getDefaultAc(userId)
 
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         response = acc.selfRecharge(message.text)
         bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
 
@@ -602,7 +599,7 @@ def selfOnlineRecharge(message):
         userId = dbSql.getUserId(message.from_user.id)
     
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.onlineRecharge(message.text)
 
@@ -633,7 +630,7 @@ def rechargeOthersPin2(message):
         userId = dbSql.getUserId(message.from_user.id)
         msisdn = dbSql.getTempdata(userId, 'rechargeTo')
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.recharge(msisdn, message.text)
 
@@ -658,7 +655,7 @@ def rechargeOthersOnline2(message):
         msisdn = dbSql.getTempdata(userId, 'rechargeTo')
         
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.onlineRecharge(message.text, msisdn)
 
@@ -669,10 +666,6 @@ def rechargeOthersOnline2(message):
             ]))
         else:
             bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeyboard(message))
-
-def cancelKeyboardHandler(message):
-    userId = dbSql.getUserId(message.from_user.id)
-    bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -906,7 +899,7 @@ def callback_query(call):
         userId = dbSql.getUserId(call.from_user.id)
 
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
         response = acc.unsubscribeProduct(subscriptionCode)
 
@@ -922,7 +915,7 @@ def callback_query(call):
         userId = dbSql.getUserId(call.from_user.id)
 
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1])
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
         response = acc.subscribeProduct(subscriptionCode)
 
@@ -986,10 +979,9 @@ if config['telegram']['connectionType'] == 'polling':
             logger.error(e, exc_info=True)
             #! Printing the error
             loggerConsole.error(e, exc_info=True)
+
 #: Webhook
 elif config['telegram']['connectionType'] == 'webhook':
-    time.sleep(1)
-
     #! Set webhook
     bot.set_webhook(url=webhookBaseUrl + webhookUrlPath,
                     certificate=open(config['telegram']['webhookOptions']['sslCertificate'], 'r'))
