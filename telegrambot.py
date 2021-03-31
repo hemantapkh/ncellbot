@@ -1,3 +1,4 @@
+import flask
 import telebot
 import ncellapp
 import json, ast, logging
@@ -20,6 +21,29 @@ dbSql = models.dbQuery(config['database'])
 language = json.load(open(config['language']))
 
 bot = telebot.TeleBot(config['telegram']['botToken'], parse_mode='HTML')
+
+#! Configuration for webhook
+if config['telegram']['connectionType'] == 'webhook':
+    webhookBaseUrl = "https://%s:%s" % (config['telegram']['webhookOptions']['webhookHost'], config['telegram']['webhookOptions']['webhookPort'])
+    webhookUrlPath = "/%s/" % (config['telegram']['botToken'])
+
+    app = flask.Flask(__name__)
+
+    #: Empty webserver index, return nothing, just http 200
+    @app.route('/', methods=['GET', 'HEAD'])
+    def index():
+        return ''
+
+    #: Process webhook calls
+    @app.route(webhookUrlPath, methods=['POST'])
+    def webhook():
+        if flask.request.headers.get('content-type') == 'application/json':
+            json_string = flask.request.get_data().decode('utf-8')
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return ''
+        else:
+            flask.abort(403)
 
 #: Check if the user is subscribed or not, returns True if subscribed
 def isSubscribed(message, sendMessage=True):
@@ -956,11 +980,28 @@ def replyKeyboard(message):
     else:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])
 
-while True:
-    try:
-        bot.polling(none_stop=True)
-    except Exception as e:
-        #! Logging the error
-        logger.error(e, exc_info=True)
-        #! Printing the error
-        loggerConsole.error(e, exc_info=True)
+if config['telegram']['connectionType'] == 'polling':
+    #! Remove previous webhook if exists
+    bot.remove_webhook()
+    
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except Exception as e:
+            #! Logging the error
+            logger.error(e, exc_info=True)
+            #! Printing the error
+            loggerConsole.error(e, exc_info=True)
+
+elif config['telegram']['connectionType'] == 'webhook':
+    time.sleep(1)
+
+    #! Set webhook
+    bot.set_webhook(url=webhookBaseUrl + webhookUrlPath,
+                    certificate=open(config['telegram']['webhookOptions']['sslCertificate'], 'r'))
+
+    #! Start flask server
+    app.run(host=config['telegram']['webhookOptions']['webhookListen'],
+            port=config['telegram']['webhookOptions']['webhookPort'],
+            ssl_context=(config['telegram']['webhookOptions']['sslCertificate'], config['telegram']['webhookOptions']['sslPrivatekey']),
+            threaded=True)
