@@ -122,7 +122,30 @@ def cancelKeyboardHandler(message):
     userId = dbSql.getUserId(message.from_user.id)
     bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
 
-#: After refresh function to update the token after refreshing it
+#: Invalid refresh token handler for callbacks
+def invalidRefreshTokenHandler_cb(call, userId, responseCode):
+    accountId = dbSql.getSetting(userId, 'defaultAcId')
+    dbSql.deleteAccount(userId, accountId)
+    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+    bot.send_message(call.message.chat.id, language['newLoginFound']['en'] if responseCode=='LGN2003' else language['sessionExpired']['en'], reply_markup=mainReplyKeyboard(call))
+
+#: Invalid refresh token handler for messages
+def invalidRefreshTokenHandler(message, userId, responseCode):
+    accountId = dbSql.getSetting(userId, 'defaultAcId')
+    dbSql.deleteAccount(userId, accountId)
+    bot.send_message(message.from_user.id, language['newLoginFound']['en'] if responseCode=='LGN2003' else language['sessionExpired']['en'], reply_markup=mainReplyKeyboard(message))
+            
+#: Unknown error handler for callbacks
+def UnknownErrorHandler_cb(call, description, statusCode):
+    text = f"{language['error']['en']}\n\nDescription: {description}\nError Code: {statusCode}"
+    bot.answer_callback_query(call.id, text, show_alert=True)
+
+#: Unknown error handler for messages
+def unknownErrorHandler(message, description, errorCode):
+    text = f"{language['error']['en']}\n\nDescription: {description}\nError Code: {errorCode}"
+    bot.send_message(message.from_user.id, text, reply_markup=mainReplyKeyboard(message))
+
+#: Updating the token in database after refreshing
 def autoRefreshToken(userId, token): 
     dbSql.updateAccount(userId,dbSql.getSetting(userId, 'defaultAcId'), token)
    
@@ -186,7 +209,7 @@ def getOtp(message, called=False):
             bot.register_next_step_handler(sent, getOtp)
         
         else:
-            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeyboard(message))
+            UnknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 def getToken(message):
     if message.text == '❌ Cancel':
@@ -211,9 +234,14 @@ def getToken(message):
         #! Invalid OTP
         elif response.responseDescCode == 'OTP2003':
             bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
+        
+        #! OTP Expired
+        elif response.responseDescCode == 'OTP2006':
+            bot.send_message(message.from_user.id, language['otpExpired']['en'], reply_markup=genMarkup_invalidOtp())
 
+        #! Unknown error
         else:
-            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=genMarkup_invalidOtp())
+            UnknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Keyboard markup for unsuccessful registration
 def genMarkup_invalidOtp(reEnter=True):
@@ -308,9 +336,19 @@ def balance(message):
         
         if account:
             acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
-            balance = acc.viewBalance()
-            bot.send_message(message.from_user.id, f'{balance.content}')
+            response = acc.viewBalance()
             
+            #! Success
+            if response.responseDescCode == 'BAL1000':
+                bot.send_message(message.from_user.id, f'{response.content}')
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
             register(message)
 
@@ -323,9 +361,19 @@ def profile(message):
 
         if account:
             acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            balance = acc.viewProfile()
-            bot.send_message(message.from_user.id, f'{balance.content}')
-
+            response = acc.viewProfile()
+            
+            #! Success
+            if response.responseDescCode == 'SUB1000':
+                bot.send_message(message.from_user.id, f'{response.content}')
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)  
+            
+            #! Error
+            else:
+                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
             register(message)
 
@@ -369,22 +417,50 @@ def genMarkup_subscribedPlans(message):
         markup.row_width = 2
 
         ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        response = ac.subscribedProducts().content
-
-        responseData = base64.b64encode(str(response['queryAllProductsResponse']['productList']).encode()).decode()
-        dbSql.setTempdata(userId, 'responseData', responseData)
-
-        shortButtons =  []
-        for i in response['queryAllProductsResponse']['productList']:
-            if len(i['name']) <= 15:
-                shortButtons.append(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
-            else:
-                markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+        response = ac.subscribedProducts()
         
-        markup.add(*shortButtons)
-        markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+        #! Success
+        if response.responseDescCode == 'BIL2000':
+            #! Set status success for use in callback handler
+            Response = {'status': 'success'}
+            Response['productList'] = response.content['queryAllProductsResponse']['productList']
+
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
+
+            shortButtons =  []
+            for i in Response['productList']:
+                if len(i['name']) <= 15:
+                    shortButtons.append(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+                else:
+                    markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+            
+            markup.add(*shortButtons)
+            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+            
+            return markup
         
-        return markup
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            Response = response.responseHeader
+            Response['status'] = response.responseDescCode
+
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
+
+            return response.responseDescCode
+        
+        #! Unknown error
+        else:
+            Response = response.responseHeader
+            Response['status'] = 'error'
+            Response['statusCode'] = response.statusCode
+            
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
+
+            return 'unknownError'
+
     else:
         return None
 
@@ -418,25 +494,51 @@ def genMarkup_products(message):
         ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
         if planType == 'data':
-            response = ac.dataPlans(catagoryId).content
+            response = ac.dataPlans(catagoryId)
         elif planType == 'voice':
-            response = ac.voiceAndSmsPlans(catagoryId).content
+            response = ac.voiceAndSmsPlans(catagoryId)
         elif planType == 'vas':
-            response = ac.vasPlans(catagoryId).content
+            response = ac.vasPlans(catagoryId)
 
-        responseData = base64.b64encode(str(response['availablePackages']).encode()).decode()
-        dbSql.setTempdata(userId, 'responseData', responseData)
+        #! Success
+        if response.responseDescCode == 'QAP1000':
+            Response = {'status':'success'}
+            Response['availablePackages'] = response.content['availablePackages']
+            
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
 
-        for item in response['availablePackages']:
-            productName = item['displayInfo']['displayName'].replace('Facebook','FB').replace('YouTube','YT').replace('TikTok','TT')
-            price = item['productOfferingPrice']['price'].split('.')[0]
-            productName += f" (Rs. {price})"
+            for item in Response['availablePackages']:
+                productName = item['displayInfo']['displayName'].replace('Facebook','FB').replace('YouTube','YT').replace('TikTok','TT')
+                price = item['productOfferingPrice']['price'].split('.')[0]
+                productName += f" (Rs. {price})"
 
-            markup.add(telebot.types.InlineKeyboardButton(text=productName, callback_data=f"cb_productInfo:{item['id']}:{planType}:{catagoryId}"))
+                markup.add(telebot.types.InlineKeyboardButton(text=productName, callback_data=f"cb_productInfo:{item['id']}:{planType}:{catagoryId}"))
 
-        markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_dataPlans' if planType=='data' else 'cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_dataPlans' if planType=='data' else 'cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+            
+            return markup
         
-        return markup
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            Response = response.responseHeader
+            Response['status'] = response.responseDescCode
+
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
+
+            return response.responseDescCode
+        
+        #! Unknown error
+        else:
+            Response = response.responseHeader
+            Response['status'] = 'error'
+            Response['statusCode'] = response.statusCode
+            
+            responseData = base64.b64encode(str(Response).encode()).decode()
+            dbSql.setTempdata(userId, 'responseData', responseData)
+
+            return 'unknownError'
     else:
         return None
         
@@ -502,8 +604,35 @@ def sendFreeSms2(message):
         acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.sendFreeSms(msisdn, message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
+        if response.responseDescCode == 'SMS1000':
+            #! SMS sent successfully
+            if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Daily 10 free SMS exceed
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
+                bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Error sending sms to own number
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
+                bot.send_message(message.from_user.id, language['selfSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Error sending SMS to off net numbers
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.content['sendFreeSMSResponse']['description'], response.content['sendFreeSMSResponse']['statusCode'])
 
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #: Unknown error
+        else:
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            
 def sendPaidSms(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
@@ -512,7 +641,7 @@ def sendPaidSms(message):
         dbSql.setTempdata(userId, 'sendSmsTo', message.text)
         sent = bot.send_message(message.from_user.id, language['enterText']['en'], reply_markup=cancelReplyKeyboard())
         
-        bot.register_next_step_handler(sent,sendFreeSms2)
+        bot.register_next_step_handler(sent,sendPaidSms2)
 
 def sendPaidSms2(message):
     if message.text == '❌ Cancel':
@@ -525,7 +654,34 @@ def sendPaidSms2(message):
         acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         
         response = acc.sendSms(msisdn, message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
+        if response.responseDescCode == 'SMS1000':
+            #! SMS sent successfully
+            if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Error no sufficient balance
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
+                bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Error sending sms to own number
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
+                bot.send_message(message.from_user.id, language['selfSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Error sending SMS to off net numbers
+            elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.content['sendFreeSMSResponse']['description'], response.content['sendFreeSMSResponse']['statusCode'])
+
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
+        else:
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Self recharge
 @bot.message_handler(commands=['selfrecharge'])
@@ -589,7 +745,26 @@ def selfPinRecharge(message):
 
         acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
         response = acc.selfRecharge(message.text)
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
+
+        #! Recharge success
+        if 'isRechargeSuccess' in response.content and response.content['isRechargeSuccess'] == True:
+            bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! Incorrect recharge pin
+        elif response.responseDescCode == 'MRG2001':
+            bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! User black Listed
+        elif response.responseDescCode == 'MRG2000':
+            bot.send_message(message.from_user.id, language['rechargeBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
+        else:
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Self online recharge
 def selfOnlineRecharge(message):
@@ -603,13 +778,28 @@ def selfOnlineRecharge(message):
         
         response = acc.onlineRecharge(message.text)
 
-        if 'url' in response.content.keys():
+        #! Success
+        if response.responseDescCode == 'OPS1000':
             bot.send_message(message.from_user.id, text='Click',
             reply_markup=telebot.types.InlineKeyboardMarkup([
                 [telebot.types.InlineKeyboardButton(text='Click here and recharge your phone', url=response.content['url'])],
             ]))
+        
+        #! Recharge amount is less than zero
+        elif response.responseDescCode in ['OPS2000','OPS2011']:
+            bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! Recharge amount is more than 5000
+        elif response.responseDescCode == 'OPS2012':
+            bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=mainReplyKeyboard(message))
+
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
         else:
-            bot.send_message(response.responseHeader)
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Recharge others with pin
 def rechargeOthersPin(message):
@@ -634,8 +824,31 @@ def rechargeOthersPin2(message):
         
         response = acc.recharge(msisdn, message.text)
 
-        bot.send_message(message.from_user.id, f'{response.content}', reply_markup=mainReplyKeyboard(message))
-
+        if 'isRechargeSuccess' in response.content:
+            #! Success
+            if response.content['isRechargeSuccess']:
+                bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #? For recharge others, ncell response with same responsecode. So, compairing with description.
+            # FIX THIS NCELL :))
+            elif response.responseDesc == 'MSISDN does not exist.':
+                bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=mainReplyKeyboard(message))
+            elif response.responseDesc == 'The user is in black list.':
+                bot.send_message(message.from_user.id, language['rechargeOBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+            elif response.responseDesc == 'the password cannot be found in online vc':
+                bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=mainReplyKeyboard(message))
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.responseDesc, response.responseCode)
+        
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
+        else:
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+        
 #: Recharge others online
 def rechargeOthersOnline(message):
     if message.text == '❌ Cancel':
@@ -659,13 +872,32 @@ def rechargeOthersOnline2(message):
         
         response = acc.onlineRecharge(message.text, msisdn)
 
-        if 'url' in response.content:
+        #! Success
+        if response.responseDescCode == 'OPS1000':
             bot.send_message(message.from_user.id,text='Click',
             reply_markup= telebot.types.InlineKeyboardMarkup([
                 [telebot.types.InlineKeyboardButton(text='Click here and recharge your phone', url=response.content['url'])],
             ]))
+        
+        #! Invalid number
+        elif response.responseDescCode in ['OPS2104', 'OPS2003']:
+            bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! Recharge amount is less than zero
+        elif response.responseDescCode in ['OPS2000','OPS2011']:
+            bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=mainReplyKeyboard(message))
+        
+        #! Recharge amount is more than 5000
+        elif response.responseDescCode == 'OPS2012':
+            bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=mainReplyKeyboard(message))
+
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
         else:
-            bot.send_message(message.from_user.id, f'{response.responseHeader}', reply_markup=mainReplyKeyboard(message))
+            unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -766,7 +998,7 @@ def callback_query(call):
     #! Self recharge online
     elif call.data == 'cb_selfRechargeOnline':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        sent = bot.edit_message_text(chat_id=call.message.chat.id, text=language['enterRechargeAmount']['en'], reply_markup=cancelReplyKeyboard())
+        sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterRechargeAmount']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, selfOnlineRecharge)
     
     #! Recharge others with pin
@@ -801,7 +1033,24 @@ def callback_query(call):
 
     #! Subscribed plans
     elif call.data == 'cb_subscribedPlans':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'], reply_markup=genMarkup_subscribedPlans(call))
+        markup = genMarkup_subscribedPlans(call)
+        userId = dbSql.getUserId(call.from_user.id)
+
+        #!? First check if the markup contains error or not 
+        if markup in [ 'LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler_cb(call, userId, responseCode=markup)
+                
+        elif markup == 'unknownError':
+            #! Response data is stored in database in b64 encoded form
+            encodedResponse = dbSql.getTempdata(userId, 'responseData')
+            decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
+
+            response = ast.literal_eval(decodedResponse)
+            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+        
+        #!? If no error, send reply markup
+        else:
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
 
     #! Subscribed product info
     elif call.data[:24] == 'cb_subscribedProductInfo':
@@ -814,26 +1063,36 @@ def callback_query(call):
 
         response = ast.literal_eval(decodedResponse)
 
-       #! Iterate through the response to find the product 
-        productInfo = None
-        for i in response:
-            if i['id'] == productId:
-                productInfo = i
-                break
-        
-        if productInfo:
-            markup = telebot.types.InlineKeyboardMarkup()
-            markup.one_time_keyboard=True
-            markup.row_width = 2
+        if response['status'] == 'success':
+            response = response['productList']
+            #! Iterate through the response to find the product 
+            productInfo = None
+            for i in response:
+                if i['id'] == productId:
+                    productInfo = i
+                    break
+            
+            if productInfo:
+                markup = telebot.types.InlineKeyboardMarkup()
+                markup.one_time_keyboard=True
+                markup.row_width = 2
 
-            markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
-            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
-        
-            text = f"<b>{productInfo['name']}</b>\n\n<em>{productInfo['description']}\n\nSubscribed On: {productInfo['subscriptionDate']}\nExpiry Date: {productInfo['expiryDate']}\n</em>"
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+                markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
+                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+            
+                text = f"<b>{productInfo['name']}</b>\n\n<em>{productInfo['description']}\n\nSubscribed On: {productInfo['subscriptionDate']}\nExpiry Date: {productInfo['expiryDate']}\n</em>"
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
 
+            else:
+                bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+        
+        #! Invalid refresh token
+        elif response['status'] in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler_cb(call, userId, response['status'])
+        
+        #! Unknown error
         else:
-            bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Data plans Catagory
     elif call.data == 'cb_dataPlans':
@@ -842,7 +1101,21 @@ def callback_query(call):
     #! Product list
     elif call.data[:8] == 'cb_plans':
         markup = genMarkup_products(call)
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectProduct']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
+        userId = dbSql.getUserId(call.from_user.id)
+        if markup in [ 'LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler_cb(call, userId, responseCode=markup)
+                
+        elif markup == 'unknownError':
+            #! Response data is stored in database in b64 encoded form
+            encodedResponse = dbSql.getTempdata(userId, 'responseData')
+            decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
+
+            response = ast.literal_eval(decodedResponse)
+            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+        
+        #! Send reply markup if no errors
+        else:
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectProduct']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
     
     #! Product info
     elif call.data[:14] == 'cb_productInfo':
@@ -855,35 +1128,45 @@ def callback_query(call):
 
         response = ast.literal_eval(decodedResponse)
 
-       #! Iterate through the response to find the product 
-        productInfo = None
-        for i in response:
-            if i['id'] == productId:
-                productInfo = i
-                break
+        if response['status'] == 'success':
+            response = response['availablePackages']
+            #! Iterate through the response to find the product 
+            productInfo = None
+            for i in response:
+                if i['id'] == productId:
+                    productInfo = i
+                    break
+            
+            if productInfo:
+                planType = call.data.split(':')[2]
+                catagoryId = call.data.split(':')[3]
+                markup = telebot.types.InlineKeyboardMarkup()
+                markup.one_time_keyboard=True
+                markup.row_width = 2
+
+                markup.add(telebot.types.InlineKeyboardButton(text='Activate' if productInfo['isBalanceSufficient'] else '⛔ Activate', callback_data=f"cb_activatePlan:{productInfo['techInfo']['subscriptionCode']}" if productInfo['isBalanceSufficient'] else 'cb_noEnoughBalanceToSub'))
+                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data=f'cb_plans:{planType}:{catagoryId}'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+
+                summary = '</em>\nSummery:\n<em>' if productInfo['accounts'] else ''
+                
+                for i in productInfo['accounts']:
+                    summary += f"👉 {i['name']} {i['amount']} {i['amountUom']} valid for {i['validity']}{i['validityUom']}\n"
+                
+                summary += f"\n💰 {productInfo['productOfferingPrice']['priceUom']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['price']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['priceType']}"
+
+                text = f"<b>{productInfo['displayInfo']['displayName']}</b>\n\n<em>{productInfo['displayInfo']['description']}\n{summary}</em>"
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+
+            else:
+                bot.answer_callback_query(call.id, language['somethingWrong']['en'])
         
-        if productInfo:
-            planType = call.data.split(':')[2]
-            catagoryId = call.data.split(':')[3]
-            markup = telebot.types.InlineKeyboardMarkup()
-            markup.one_time_keyboard=True
-            markup.row_width = 2
-
-            markup.add(telebot.types.InlineKeyboardButton(text='Activate' if productInfo['isBalanceSufficient'] else '⛔ Activate', callback_data=f"cb_activatePlan:{productInfo['techInfo']['subscriptionCode']}" if productInfo['isBalanceSufficient'] else 'cb_noEnoughBalanceToSub'))
-            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data=f'cb_plans:{planType}:{catagoryId}'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
-
-            summary = '</em>\nSummery:\n<em>' if productInfo['accounts'] else ''
-            
-            for i in productInfo['accounts']:
-                summary += f"👉 {i['name']} {i['amount']} {i['amountUom']} valid for {i['validity']}{i['validityUom']}\n"
-            
-            summary += f"\n💰 {productInfo['productOfferingPrice']['priceUom']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['price']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['priceType']}"
-
-            text = f"<b>{productInfo['displayInfo']['displayName']}</b>\n\n<em>{productInfo['displayInfo']['description']}\n{summary}</em>"
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
-
+        #! Invalid refresh token
+        elif response['status'] in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler_cb(call, userId, response['status'])
+        
+        #! Unknown error
         else:
-            bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Deactivation not allowed
     elif call.data == 'cb_deactivationNotAllowed':
@@ -903,10 +1186,21 @@ def callback_query(call):
 
         response = acc.unsubscribeProduct(subscriptionCode)
 
-        if response.responseCode == '00':
+        #! Success
+        if response.responseDescCode == 'BIL1001':
             bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
+        
+        #! Product already deactivated
+        elif response.responseDescCode == 'PSU2004':
+            bot.answer_callback_query(call.id, language['alreadyDeactivated']['en'], show_alert=True)
+        
+        #! Product already deactivated
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
         else:
-            bot.answer_callback_query(call.id, text=f"{language['error']['en']}\n\n{response.responseDesc}", show_alert=True)
+            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
 
     #: Activate product
     elif call.data[:15] == 'cb_activatePlan':
@@ -919,10 +1213,21 @@ def callback_query(call):
 
         response = acc.subscribeProduct(subscriptionCode)
 
-        if response.responseCode == '00':
+        #! Success
+        if response.responseDescCode == 'BIL1000':
             bot.answer_callback_query(call.id, language['activationSuccessful']['en'], show_alert=True)
+
+        #! Product already activated
+        if response.responseDescCode == 'PSU2003':
+            bot.answer_callback_query(call.id, language['alreadyActivated']['en'], show_alert=True)
+        
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        
+        #! Unknown error
         else:
-            bot.answer_callback_query(call.id, text=f"{language['error']['en']}\n\n{response.responseDesc}", show_alert=True)
+            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
 
     #! Go back to plan catagory
     elif call.data == 'cb_backToPlans':
