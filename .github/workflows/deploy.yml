@@ -1,14 +1,12 @@
-# Deploy the Bot in digitalocean on every PUSH
-
 name: Deploy
 
 on: [push]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    
+    if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v1
 
