@@ -130,6 +130,10 @@ dmypy.json
 
 # Logs
 telegram.errors.logs
+facebook.errors.logs
 
 # Configurations
 config.json
+
+# Database
+database.sqlite
