@@ -6,7 +6,12 @@ import json, base64, time, ssl
 
 import models
 
-config = json.load(open('config.json'))
+#!? Finding the absolute path of the config file
+scriptPath = path.abspath(__file__)
+dirPath = path.dirname(scriptPath)
+configPath = path.join(dirPath,'config.json')
+
+config = json.load(open(configPath))
 
 logging.basicConfig(filename=config['telegram']['errorLog'],
         filemode='a',
