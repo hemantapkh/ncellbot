@@ -444,7 +444,7 @@ def profile(message):
             
             #! Success
             if response.responseDescCode == 'SUB1000':
-                bot.send_message(message.from_user.id, f'{response.content}')
+                profileFormat(message, response.content['querySubscriberProfileResponse'])
             
             #! Invalid refresh token
             elif response.responseDescCode in ['LGN2003', 'LGN2004']:
@@ -455,6 +455,22 @@ def profile(message):
                 UnknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
             register(message)
+
+def profileFormat(message, response):
+    if isSubscribed(message):
+        text = f"{'👦🏻' if response['subscriberDetail']['gender'] == 'M' else '👧🏻'} Customer Profile\n\n"
+        text += f"Name: {response['subscriberDetail']['firstName']} {response['subscriberDetail']['lastName']}\n"
+        text += f"Phone number: {response['subscriberDetail']['msisdn']}\n"
+        
+        if response['subscriberDetail']['email'] != 'updateemail@ncell.com':
+            text += f"Email: {response['subscriberDetail']['email']}\n"
+        
+        text += f"Registered on: {response['subscriberDetail']['registrationPeriod']}\n"
+        
+        if response['subscriberDetail']['profileImage']:
+            text += f"<a href='{response['subscriberDetail']['profileImage']}'>Profile Picture🔻</a>"
+
+        bot.send_message(message.from_user.id, text)
 
 #: Plans and products
 @bot.message_handler(commands=['plans'])
