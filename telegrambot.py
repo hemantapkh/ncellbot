@@ -360,7 +360,7 @@ def balance(message, called=False):
 
 #: Balance parser
 def balanceFormat(message, response, called):
-    text = f"💰 credit Balance\n\nBalance Rs. {response['creditBalanceDetail']['balance']}\nRecharged On: {response['creditBalanceDetail']['lastRechargeDate']}"
+    text = f"💰 Credit Balance\n\nBalance Rs. {response['creditBalanceDetail']['balance']}\nRecharged On: {response['creditBalanceDetail']['lastRechargeDate']}"
 
     #! If SMS balance
     if response['smsBalanceList']:
@@ -875,10 +875,7 @@ def selfOnlineRecharge(message):
 
         #! Success
         if response.responseDescCode == 'OPS1000':
-            bot.send_message(message.from_user.id, text='Click',
-            reply_markup=telebot.types.InlineKeyboardMarkup([
-                [telebot.types.InlineKeyboardButton(text='Click here and recharge your phone', url=response.content['url'])],
-            ]))
+            bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
         
         #! Recharge amount is less than zero
         elif response.responseDescCode in ['OPS2000','OPS2011']:
@@ -969,10 +966,7 @@ def rechargeOthersOnline2(message):
 
         #! Success
         if response.responseDescCode == 'OPS1000':
-            bot.send_message(message.from_user.id,text='Click',
-            reply_markup= telebot.types.InlineKeyboardMarkup([
-                [telebot.types.InlineKeyboardButton(text='Click here and recharge your phone', url=response.content['url'])],
-            ]))
+            bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
         
         #! Invalid number
         elif response.responseDescCode in ['OPS2104', 'OPS2003']:
