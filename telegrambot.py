@@ -335,8 +335,8 @@ def switch(message):
 
 #: Balance check  
 @bot.message_handler(commands=['balance'])
-def balance(message):
-    if isSubscribed(message):
+def balance(message, called=False):
+    if called or isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
         account = dbSql.getDefaultAc(userId)
         
@@ -346,7 +346,7 @@ def balance(message):
             
             #! Success
             if response.responseDescCode == 'BAL1000':
-                bot.send_message(message.from_user.id, f'{response.content}')
+                balanceFormat(message, response.content['queryBalanceResponse'], called)
             
             #! Invalid refresh token
             elif response.responseDescCode in ['LGN2003', 'LGN2004']:
@@ -356,6 +356,79 @@ def balance(message):
             else:
                 unknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
+            register(message)
+
+#: Balance parser
+def balanceFormat(message, response, called):
+    text = f"💰 credit Balance\n\nBalance Rs. {response['creditBalanceDetail']['balance']}\nRecharged On: {response['creditBalanceDetail']['lastRechargeDate']}"
+
+    #! If SMS balance
+    if response['smsBalanceList']:
+        text += '\n\n💬 SMS Balance\n'
+        #? I don't know the response structure, LOL
+        text += str(response['smsBalanceList'])
+
+    #! If data balance
+    if response['dataBalanceList']:
+        text += '\n\n🌐 Data Balance\n'
+        #? I don't know the response structure, LOL
+        text += str(response['dataBalanceList'])
+
+    #! If voice balance
+    if response['voiceBalanceList']:
+        text += '\n\n🎤 Voice Balance\n'
+        #? Not sure the structure may change for different items
+        try:
+            for i in response['voiceBalanceList']:
+                text+= f"\n✨{i['ncellName'].capitalize()} {i['freeTalkTime']} {i['talkTimeUom'].lower()}\nExpires on: {i['expDate']}"
+        except Exception:
+            text += str(response['voiceBalanceList']) 
+
+    #! If unpaid loans
+    if response['creditBalanceDetail']['loanAmount'] > 0:
+        text += f"\n\n💸 Loan\n\nLoan amount Rs. {response['creditBalanceDetail']['loanAmount']}\nLoan taken on: {response['creditBalanceDetail']['lastLoanTakenDate']}"
+        
+        if called:
+            bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=text)
+        else:
+            bot.send_message(message.from_user.id, text)
+    
+    #! If no unpaid loans
+    else:
+        markup = None
+        #! If the balance is less than 5, send take loan button
+        if response['creditBalanceDetail']['balance'] <= 5:
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+   
+            markup.add(telebot.types.InlineKeyboardButton('🙏 Take Loan', callback_data='cb_confirmLoan'))
+            
+        if called:
+            bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=text, reply_markup=markup)
+        else:
+            bot.send_message(message.from_user.id, text, reply_markup=markup)
+
+#: Loan
+@bot.message_handler(commands=['loan'])
+def loan(message, called=False):
+    if called or isSubscribed(message):
+        userId = dbSql.getUserId(message.from_user.id)
+        account = dbSql.getDefaultAc(userId)
+
+        if account:
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+        
+            markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'), telebot.types.InlineKeyboardButton('🙏  Confirm loan', callback_data='cb_takeLoan'))
+
+            if called:
+                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToBalance'))
+                bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['confirmLoan']['en'], reply_markup=markup)
+            else:     
+                bot.send_message(message.from_user.id, language['confirmLoan']['en'], reply_markup=markup)
+        else:
+            if called:
+                bot.delete_message(chat_id=message.message.chat.id, message_id=message.message.id)
             register(message)
 
  #: Customer profile       
@@ -915,8 +988,7 @@ def callback_query(call):
     #! Check whether a user is subscribed or not after clicking button
     elif call.data[:15] == 'cb_isSubscribed':
         if isSubscribed(call, sendMessage=False):
-            #! Name of calling function is after 14th index
-            callingFunction = call.data[14:]
+            callingFunction = call.data.split(':')[1]
             
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['thanksForSub']['en'])
             
@@ -1027,6 +1099,39 @@ def callback_query(call):
         else:
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['noAccounts']['en'], reply_markup=mainReplyKeyboard(call))
 
+    #! Alert before taking loans
+    elif call.data == 'cb_confirmLoan':
+        loan(message=call, called=True)
+
+    #! Take loan
+    elif call.data == 'cb_takeLoan':
+        userId = dbSql.getUserId(call.from_user.id)
+
+        account = dbSql.getDefaultAc(userId)
+        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+
+        response = acc.takeLoan()
+        
+        #! Loan success
+        if response.responseDescCode == 'CL1003':
+            bot.answer_callback_query(call.id, language['loanGranted']['en'], show_alert=True)
+        
+        #! Loan failled
+        elif response.responseDescCode == 'CL3001':
+            bot.answer_callback_query(call.id, language['loanFailled']['en'], show_alert=True)
+        
+        #! Invalid refresh token
+        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
+        
+        #! Unknown error
+        else:
+            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
+        
+    #! Back to balance
+    elif call.data == 'cb_backToBalance':
+        balance(message=call, called=True)
+
     #! Send free SMS
     elif call.data == 'cb_freeSms':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
@@ -1035,7 +1140,7 @@ def callback_query(call):
     #! Send paid SMS
     elif call.data == 'cb_paidSms':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        paidsms(message=call)
+        paidsms(message=call, called=True)
 
     #! Subscribed plans
     elif call.data == 'cb_subscribedPlans':
