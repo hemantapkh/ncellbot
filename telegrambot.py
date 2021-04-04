@@ -65,7 +65,7 @@ def isSubscribed(message, sendMessage=True):
     if not subscribed:
         #!? Send the links if sendMessage is True
         if sendMessage:
-            bot.send_message(message.from_user.id, text=language['notSubscribed']['en'], reply_markup=telebot.types.InlineKeyboardMarkup([
+            bot.send_message(message.from_user.id, text=language['notSubscribed']['en'].format(message.from_user.first_name), reply_markup=telebot.types.InlineKeyboardMarkup([
             [telebot.types.InlineKeyboardButton(text='Join Channel', url='https://t.me/H9YouTube'),
             telebot.types.InlineKeyboardButton(text='Subscribe Channel', url='https://www.youtube.com/h9youtube?sub_confirmation=1')],
             [telebot.types.InlineKeyboardButton('❤️ Done', callback_data=f'cb_isSubscribed:{callerFunction}')]
@@ -111,7 +111,7 @@ def mainReplyKeyboard(message):
             keyboard.row(button10, button11, button12)  
         else:
             #!? Only one account
-            keyboard.row(button4, button5)
+            keyboard.row(button4, button5, button1)
             keyboard.row(button6, button7, button8)
             keyboard.row(button10, button11, button12)
 
@@ -143,13 +143,11 @@ def invalidRefreshTokenHandler(message, userId, responseCode):
             
 #: Unknown error handler for callbacks
 def UnknownErrorHandler_cb(call, description, statusCode):
-    text = f"{language['error']['en']}\n\nDescription: {description}\nError Code: {statusCode}"
-    bot.answer_callback_query(call.id, text, show_alert=True)
+    bot.answer_callback_query(call.id, text=language['unknwonError']['en'].format(description, statusCode), show_alert=True)
 
 #: Unknown error handler for messages
 def unknownErrorHandler(message, description, errorCode):
-    text = f"{language['error']['en']}\n\nDescription: {description}\nError Code: {errorCode}"
-    bot.send_message(message.from_user.id, text, reply_markup=mainReplyKeyboard(message))
+    bot.send_message(message.from_user.id, text=language['unknwonError']['en'].format(description, statusCode), reply_markup=mainReplyKeyboard(message))
 
 #: Updating the token in database after refreshing
 def autoRefreshToken(userId, token): 
@@ -161,11 +159,11 @@ def start(message):
     userId = dbSql.getUserId(telegramId)
     if userId:
         #!? If user is already in the database
-        bot.send_message(message.from_user.id, text=language['greet']['en'], reply_markup=mainReplyKeyboard(message))
+        bot.send_message(message.from_user.id, text=language['greet']['en'].format(message.from_user.first_name), reply_markup=mainReplyKeyboard(message))
     else:
         #!? If not, add the user in the database
-        dbSql.setUserId(telegramId)
-        bot.send_message(message.from_user.id, text=language['greetFirstTime']['en'], reply_markup=mainReplyKeyboard(message))
+        #dbSql.setUserId(telegramId)
+        bot.send_message(message.from_user.id, text=language['greetFirstTime']['en'].format(message.from_user.first_name),disable_web_page_preview=True, reply_markup=mainReplyKeyboard(message))
 
 #! Ping pong
 @bot.message_handler(commands=['ping'])
@@ -229,9 +227,11 @@ def getToken(message):
         #! Successfully registered
         if response.responseDescCode == 'OTP1000':
             dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
+            
             #!? Remove the register msisdn from the database
             dbSql.setTempdata(userId,'registerMsisdn', None)
-            bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'].format(msisdn), reply_markup=mainReplyKeyboard(message))
         
         #! OTP attempts exceed
         elif response.responseDescCode == 'OTP2002':
@@ -268,7 +268,7 @@ def genMarkup_invalidOtp(reEnter=True):
 @bot.message_handler(commands=['accounts'])
 def accounts(message):
     markup = genMarkup_accounts(message, action='select')
-    bot.send_message(message.from_user.id, text= language['selectActionAndAccount']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
+    bot.send_message(message.from_user.id, text= language['accounts']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
 
 #: Markup for accounts, return None if accounts is None
 def genMarkup_accounts(message, action):
@@ -284,7 +284,7 @@ def genMarkup_accounts(message, action):
             
             #!? Emoji for logged in account
             if str(accountId) == str(defaultAcId):
-                buttons.append(telebot.types.InlineKeyboardButton(f'{msisdn}✅', callback_data=f'cb_{action}Account_{msisdn}:{accountId}'))
+                buttons.append(telebot.types.InlineKeyboardButton(f'✅ {msisdn}', callback_data=f'cb_{action}Account_{msisdn}:{accountId}'))
             else:
                 buttons.append(telebot.types.InlineKeyboardButton(msisdn, callback_data=f'cb_{action}Account_{msisdn}:{accountId}'))
 
@@ -329,7 +329,7 @@ def switch(message):
             accountId = accounts[0][0]
             dbSql.setSetting(userId, 'defaultAcId', accountId)
 
-        bot.send_message(message.chat.id, f"{language['loggedinAs']['en']} {accountId}")
+        bot.send_message(message.chat.id, f"{language['loggedinAs']['en'].format(accountId)}")
     else:
         register(message)
 
@@ -419,7 +419,7 @@ def loan(message, called=False):
             markup = telebot.types.InlineKeyboardMarkup()
             markup.one_time_keyboard=True
         
-            markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'), telebot.types.InlineKeyboardButton('🙏  Confirm loan', callback_data='cb_takeLoan'))
+            markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'), telebot.types.InlineKeyboardButton('🤝  Confirm loan', callback_data='cb_takeLoan'))
 
             if called:
                 markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToBalance'))
@@ -665,7 +665,7 @@ def sms(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
         if dbSql.getSetting(userId, 'defaultAcId'):
-            bot.send_message(message.from_user.id, language['selectAny']['en'], reply_markup=genMarkup_sms())
+            bot.send_message(message.from_user.id, language['sms']['en'], reply_markup=genMarkup_sms())
         else:
             register(message)
 
@@ -697,20 +697,22 @@ def sendFreeSms2(message):
         msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
         account = dbSql.getDefaultAc(userId)
         acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        
+
         response = acc.sendFreeSms(msisdn, message.text)
+
         if response.responseDescCode == 'SMS1000':
             #! SMS sent successfully
             if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
-            
+                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                dbSql.setTempdata(userId, 'sendSmsTo', None)
+
             #! Daily 10 free SMS exceed
             elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
                 bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
             
-            #! Error sending sms to own number
+            #! Error sending sms (Long text or SMS to own number)
             elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
-                bot.send_message(message.from_user.id, language['selfSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+                bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
             
             #! Error sending SMS to off net numbers
             elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
@@ -752,15 +754,16 @@ def sendPaidSms2(message):
         if response.responseDescCode == 'SMS1000':
             #! SMS sent successfully
             if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
-            
+                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                dbSql.setTempdata(userId, 'sendSmsTo', None)
+
             #! Error no sufficient balance
             elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
                 bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
             
-            #! Error sending sms to own number
+            #! Error sending sms (Long text or SMS to own number)
             elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
-                bot.send_message(message.from_user.id, language['selfSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+                bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
             
             #! Error sending SMS to off net numbers
             elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
@@ -1010,11 +1013,11 @@ def callback_query(call):
 
    #! Select action for /accounts     
     elif call.data == 'cb_selectAccount':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount']['en'], reply_markup=genMarkup_accounts(message=call, action='select'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accounts']['en'], reply_markup=genMarkup_accounts(message=call, action='select'))
 
     #! Remove action for /accounts
     elif call.data == 'cb_removeAccount':
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectActionAndAccount']['en'], reply_markup=genMarkup_accounts(message=call, action='remove'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accounts']['en'], reply_markup=genMarkup_accounts(message=call, action='remove'))
     
     #! Select default account
     elif call.data[:17] == 'cb_selectAccount_':
@@ -1028,10 +1031,10 @@ def callback_query(call):
         
         #! If the account is already default account
         if str(defaultAcId) == accountId:
-            bot.answer_callback_query(call.id, language['alreadyLoggedin']['en'])
+            bot.answer_callback_query(call.id, language['alreadyLoggedin']['en'].format(msisdn))
         else:
             dbSql.setDefaultAc(userId, accountId)
-            bot.answer_callback_query(call.id, f"{language['loggedinAs']['en']} {msisdn}")
+            bot.answer_callback_query(call.id, f"{language['loggedinAs']['en'].format(msisdn)}")
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.id, reply_markup=genMarkup_accounts(call, 'select'))
 
     #! Remove account from database
@@ -1042,7 +1045,7 @@ def callback_query(call):
         accountId = call.data[17:].split(':')[1]
 
         dbSql.deleteAccount(userId, accountId)
-        bot.answer_callback_query(call.id, f"{language['successfullyLoggedout']['en']} {msisdn}")
+        bot.answer_callback_query(call.id, f"{language['successfullyLoggedout']['en'].format(msisdn)}")
 
         markup = genMarkup_accounts(message=call, action='remove')
         if markup:
@@ -1052,7 +1055,7 @@ def callback_query(call):
 
     #! Re-enter the OTP
     elif call.data == 'cb_reEnterOtp':
-        sent = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['reEnterOtp']['en'])
+        sent = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['enterOtp']['en'])
         bot.register_next_step_handler(sent, getToken)
 
     #! Re-sent the OTP to the given number
@@ -1150,7 +1153,7 @@ def callback_query(call):
     #! Send paid SMS
     elif call.data == 'cb_paidSms':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        paidsms(message=call, called=True)
+        paidsms(message=call)
 
     #! Subscribed plans
     elif call.data == 'cb_subscribedPlans':

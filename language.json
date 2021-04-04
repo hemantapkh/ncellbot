@@ -1,0 +1,286 @@
+{
+    "enterNumber": {
+        "en": "☎️ Enter a phone number to register.",
+        "np": null
+    },
+
+    "invalidNumber": {
+        "en": "⚠️ The number you have entered is invalid. Please enter a valid Ncell number in this format (98XXXXXXXX).",
+        "np": null
+     },
+
+    "enterOtp": {
+        "en": "🔑 Enter the verification code sent to your mobile number.",
+        "np": null
+    },
+
+    "registeredSuccessfully": {
+        "en": "🙌 {} is registered successfully.",
+        "np": null
+    },
+
+    "invalidOtp": {
+        "en": "⚠️ The OTP you have entered is incorrect. Please recheck the OTP and enter it again.",
+        "np": null
+     },
+
+     "otpExpired": {
+        "en": "⚠️ The OTP you have entered is expired. Please regenerate a new OTP.",
+        "np": null
+     },
+
+    "otpAttemptExceed": {
+        "en": "⚠️ You have crossed the maximum OTP attempt. Please regenerate a new OTP.",
+        "np": null
+    },
+
+    "otpSendExceed": {
+       "en": "⚠️ Requested MSISDN is blocked!! Please wait for {} minutes to get a new OTP in this number or register with a different number.",
+       "np": null
+    },
+
+    "ping": {
+        "en": "🏓 pong",
+        "np": null
+    },
+
+    "notSubscribed": {
+        "en": "🥺 Hi {}, It seems like you are not subscribed to our channel yet. Due to our limited resources, the bot is limited to our subscribers only. Please support us by subscribing to our channel and use the bot.\n\n<b>Click on the button below to subscribe to our channel and press the ❤️ Done button after subscribing.</b>",
+        "np": null
+    },
+
+    "thanksForSub": {
+        "en": "😇 <b>Thank you so much for supporting us!! Being a part of the channel you will let you get the latest updates of our projects.</b>",
+        "np": null
+    },
+
+    "notSubscribedCallback": {
+        "en": "⚠️ You are not subscribed yet.",
+        "np": null
+    },
+
+    "greetFirstTime": {
+        "en": "🙏 Hi {},\n\nI am Ncell Bot 🤖, a <b>free</b> and <b><a href='https://github.com/hemantapkh/ncellbot'>Open Source</a></b> telegram bot. I can help you to use the services of Ncell app from telegram. Please register your number and get started.\n\n<b>Please note that we are in no way affiliated with, authorized, maintained, sponsored, or endorsed by Ncell or any of its affiliates or subsidiaries.</b>",
+        "np": null
+    },
+
+    "greet": {
+        "en": "👋 Hi {}, Welcome back to the Ncell bot.",
+        "np": null
+    },
+
+    "noAccounts": {
+        "en": "⚠️ You do not have any account registered. Use /register to register your number.",
+        "np": null
+    },
+
+    "accounts": {
+        "en": "👥 <b>Accounts</b>\n\nAdd a new account or manage your existing one. Select the action and choose the account.\n\n<b>You can register as many number you wish.</b>",
+        "np": null
+    },
+
+    "alreadyLoggedin": {
+        "en": "👌 You are already loggedin as {}.",
+        "np": null
+    },
+
+    "loggedinAs": {
+        "en": "✅ You are logged in as {}.",
+        "np": null
+    },
+
+    "successfullyLoggedout": {
+        "en": "👊 {} is removed from your the database.",
+        "np": null
+    },
+
+    "sms": {
+        "en": "✉️ <b>SMS</b>\n\nYou can send 10 SMS daily to any Ncell number for free and paid SMS for Rs. 1.20 per SMS. \n\nUnlike Ncell App, the text is not limited to 160 characters. You can send upto 1000 characters at once.😉\n\n<b>Note that paid SMS won't use your SMS packs but deduct the balance instead.</b>",
+        "np": null
+    },
+
+    "enterDestinationMsisdn": {
+        "en": "📞 Enter the destination number.",
+        "np": null
+    },
+
+    "enterText": {
+        "en": "📝 Enter your text.",
+        "np": null
+    },
+
+    "smsSentSuccessfully": {
+        "en": "✉️ <b>SMS Sent Successfully</b>\n\n<code>{}</code>\n\n<b>To {}</b>",
+        "np": null
+    },
+
+    "freeSmsExceed": {
+        "en": "⚠️ You have already crossed the free SMS limit.",
+        "np": null
+    },
+
+    "smsError": {
+        "en": "⚠️ Error while sending your SMS.",
+        "np": null
+    },
+    
+    "offnetNumberSmsError": {
+        "en": "⚠️ The destination number is off-net. You can only send SMS within Ncell network.",
+        "np": null
+    },
+
+    "smsErrorInsufficientBalance": {
+        "en": "⚠️ You do not have sufficient balance to send SMS.",
+        "np": null
+    },
+
+    "rechargeTo": {
+        "en": "💳<b> Recharge</b>\n\nChoose whether you would like to recharge for yourself or someone else.",
+        "np": null
+    },
+
+    "rechargeMethod": {
+        "en": "💳<b> Recharge</b>\n\nHow would you like to recharge?",
+        "np": null
+    },
+
+    "enterRechargePin": {
+        "en": "📌 Enter the 16 digit recharge pin.",
+        "np": null
+    },
+
+    "enterRechargeAmount": {
+        "en": "💰 Enter the amount to recharge.",
+        "np": null
+    },
+
+    "selectPlanType": {
+        "en": "📦 <b>Plans and Products</b>\n\nselect the type of plan you're interested in.",
+        "np": null
+    },
+
+    "subscribedPlans": {
+        "en": "📦 <b>Plans and Products</b>\n\nYou have subscribed to the following products. Click the product for more details.",
+        "np": null
+    },
+
+    "selectProduct": {
+        "en": "📦 <b>Plans and Products</b>\n\nThese are the available products for your selected plan. Click the product for more details.",
+        "np": null
+    },
+
+    "deactivationSuccessful": {
+        "en": "🙌 The selected product is deactivated successfully.",
+        "np": null
+    },
+
+    "activationSuccessful": {
+        "en": "🙌 The selected product is subscribed successfully.",
+        "np": null
+    },
+
+    "alreadyActivated": {
+        "en": "👌 The product you're trying to activate is already activated.",
+        "np": null
+    },
+
+    "alreadyDeactivated": {
+        "en": "👌 The product you're trying to deactivate is already deactivated.",
+        "np": null
+    },
+
+    "deactivationNotAllowed": {
+        "en": "⚠️ The selected product can't be deactivated.",
+        "np": null
+    },
+
+    "noEnoughBalanceToSub": {
+        "en": "⚠️ You do not have sufficient balance to subscribe this product.",
+        "np": null
+    },
+
+    "rechargeSuccess": {
+        "en": "🙌 Recharge success.",
+        "np": null
+    },
+
+    "incorrectRpin": {
+        "en": "⚠️ The recharge pin you have entered is incorrect.",
+        "np": null
+    },
+
+    "amountLessThanZeroError": {
+        "en": "⚠️ Amount must be greater than 0.",
+        "np": null
+    },
+
+    "amountMoreThan5000Error": {
+        "en": "⚠️ Recharge amount should be less than 5000.",
+        "np": null
+    },
+
+    "rechargeBlackListed": {
+        "en": "⚠️ You number is black listed and you can't recharge with pin for some time. Wait for sometime or recharge with online method.",
+        "np": null
+    },
+
+    "rechargeOBlackListed": {
+        "en": "⚠️ The number you are trying to recharge is black listed and you can't recharge them with pin for some time. Wait for sometime or recharge with online method.",
+        "np": null
+    },
+
+    "confirmLoan": {
+        "en": "🏦 <b>Ncell Bot Bank</b>\n\nPlease confirm your loan by pressing the 🤝 Confirm loan button below.\n\n<b>Note that extra amount will be deducted later for the service.</b>",
+        "np": null
+    },
+
+    "loanGranted": {
+        "en": "🤝 Your loan is granted successfully.",
+        "np": null
+    },
+
+    "loanFailled": {
+        "en": "⚠️ You are not eligiable to take loan.",
+        "np": null
+    },
+
+    "helpMenu": {
+        "en": "HELP MENU",
+        "np": null
+    },
+
+    "settingsMenu": {
+        "en": "SETTINGS MENU",
+        "np": null
+    },
+
+    "supportUsMenu": {
+        "en": "SUPPORT MENU",
+        "np": null
+    },
+    
+    "somethingWrong": {
+        "en": "⚠️ Something went wrong!",
+        "np": null
+    },
+
+    "unknwonError": {
+        "en": "⚠️ <b>Error</b>\n\n{}\n\nError code {}",
+        "np": null
+    },
+
+    "cancelled": {
+        "en": "❌ Cancelled",
+        "np": null
+    },
+
+    "newLoginFound": {
+        "en": "⚠️ You logged in from another device. Please register again.",
+        "np": null
+    },
+
+    "sessionExpired": {
+        "en": "⚠️ Your session is expired. Please register again.",
+        "np": null
+    }
+ }
