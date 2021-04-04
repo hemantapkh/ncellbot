@@ -146,7 +146,7 @@ def UnknownErrorHandler_cb(call, description, statusCode):
     bot.answer_callback_query(call.id, text=language['unknwonError']['en'].format(description, statusCode), show_alert=True)
 
 #: Unknown error handler for messages
-def unknownErrorHandler(message, description, errorCode):
+def unknownErrorHandler(message, description, statusCode):
     bot.send_message(message.from_user.id, text=language['unknwonError']['en'].format(description, statusCode), reply_markup=mainReplyKeyboard(message))
 
 #: Updating the token in database after refreshing
@@ -184,36 +184,52 @@ def getOtp(message, called=False):
         userId = dbSql.getUserId(message.from_user.id)
         #!? MSISDN is previous text if not called, else it must be on the database
         msisdn = message.text if not called else dbSql.getTempdata(userId, 'registerMsisdn')
-           
-        ac = ncellapp.register(msisdn)
-        response = ac.sendOtp()
 
-        #! OTP sent successfully
-        if response.responseDescCode == 'OTP1000':
-            sent = bot.send_message(message.from_user.id, language['enterOtp']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
-            if not called:
-                #!? Add the msisdn in the database if not called
-                dbSql.setTempdata(dbSql.getUserId(message.from_user.id), 'registerMsisdn', message.text)     
-            
-            bot.register_next_step_handler(sent, getToken)
-       
-        #! OTP generation exceed
-        elif response.responseDescCode == 'OTP2005':
-            #!? Remove the MSISDN from temp database
-            dbSql.setTempdata(userId, 'registerMsisdn', None)
-            if called:
-                sent = bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+        msisdnValid = True
+        if not called:
+            if len(msisdn) != 10:
+                msisdnValid = False
             else:
-                sent = bot.send_message(message.from_user.id, language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+                try:
+                    int(msisdn)
+                except Exception:
+                    msisdnValid = False
+
+        if msisdnValid:
+            ac = ncellapp.register(msisdn)
+            response = ac.sendOtp()
+
+            #! OTP sent successfully
+            if response.responseDescCode == 'OTP1000':
+                sent = bot.send_message(message.from_user.id, language['enterOtp']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
+                if not called:
+                    #!? Add the msisdn in the database if not called
+                    dbSql.setTempdata(dbSql.getUserId(message.from_user.id), 'registerMsisdn', message.text)     
+                
+                bot.register_next_step_handler(sent, getToken)
+        
+            #! OTP generation exceed
+            elif response.responseDescCode == 'OTP2005':
+                #!? Remove the MSISDN from temp database
+                dbSql.setTempdata(userId, 'registerMsisdn', None)
+                if called:
+                    sent = bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+                else:
+                    sent = bot.send_message(message.from_user.id, language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+                    bot.register_next_step_handler(sent, getOtp)
+        
+            #! Invalid Number
+            elif response.responseDescCode == 'LGN2007':
+                sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
                 bot.register_next_step_handler(sent, getOtp)
-        
-        #! Invalid Number
-        elif response.responseDescCode == 'LGN2007':
-            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'])
-            bot.register_next_step_handler(sent, getOtp)
-        
+            
+            else:
+                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+
+        #! Invalid number
         else:
-            UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, getOtp) 
 
 def getToken(message):
     if message.text == '❌ Cancel':
@@ -222,32 +238,46 @@ def getToken(message):
         userId = dbSql.getUserId(message.from_user.id)
         msisdn = dbSql.getTempdata(userId, 'registerMsisdn')
         ac = ncellapp.register(msisdn)
-        response = ac.getToken(message.text)
-        
-        #! Successfully registered
-        if response.responseDescCode == 'OTP1000':
-            dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
-            
-            #!? Remove the register msisdn from the database
-            dbSql.setTempdata(userId,'registerMsisdn', None)
-            
-            bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'].format(msisdn), reply_markup=mainReplyKeyboard(message))
-        
-        #! OTP attempts exceed
-        elif response.responseDescCode == 'OTP2002':
-            bot.send_message(message.from_user.id, language['otpAttemptExceed']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
-        
-        #! Invalid OTP
-        elif response.responseDescCode == 'OTP2003':
-            bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
-        
-        #! OTP Expired
-        elif response.responseDescCode == 'OTP2006':
-            bot.send_message(message.from_user.id, language['otpExpired']['en'], reply_markup=genMarkup_invalidOtp())
 
-        #! Unknown error
+        otpValid = True
+        if len(message.text) != 6:
+            otpValid = False
         else:
-            UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+            try:
+                int(message.text)
+            except Exception:
+                otpValid = False
+        
+        if otpValid:
+            response = ac.getToken(message.text)
+            
+            #! Successfully registered
+            if response.responseDescCode == 'OTP1000':
+                dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
+                
+                #!? Remove the register msisdn from the database
+                dbSql.setTempdata(userId,'registerMsisdn', None)
+                
+                bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'].format(msisdn), reply_markup=mainReplyKeyboard(message))
+            
+            #! OTP attempts exceed
+            elif response.responseDescCode == 'OTP2002':
+                bot.send_message(message.from_user.id, language['otpAttemptExceed']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
+            
+            #! Invalid OTP
+            elif response.responseDescCode == 'OTP2003':
+                bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
+            
+            #! OTP Expired
+            elif response.responseDescCode == 'OTP2006':
+                bot.send_message(message.from_user.id, language['otpExpired']['en'], reply_markup=genMarkup_invalidOtp())
+
+            #! Unknown error
+            else:
+                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+
+        else:
+            bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
 
 #: Keyboard markup for unsuccessful registration
 def genMarkup_invalidOtp(reEnter=True):
@@ -683,103 +713,132 @@ def sendFreeSms(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        dbSql.userId = dbSql.getUserId(message.from_user.id)
-        dbSql.setTempdata(dbSql.userId, 'sendSmsTo', message.text)
-        sent = bot.send_message(message.from_user.id, language['enterText']['en'], reply_markup=cancelReplyKeyboard())
+        msisdnValid = True
+        if len(message.text) != 10:
+            msisdnValid = False
+        else:
+            try:
+                int(message.text)
+            except Exception:
+                msisdnValid = False
         
-        bot.register_next_step_handler(sent,sendFreeSms2)
+        if msisdnValid:
+            msisdnValid = False
+            dbSql.userId = dbSql.getUserId(message.from_user.id)
+            dbSql.setTempdata(dbSql.userId, 'sendSmsTo', message.text)
+            sent = bot.send_message(message.from_user.id, language['enterText']['en'], reply_markup=cancelReplyKeyboard())
+            
+            bot.register_next_step_handler(sent,sendFreeSms2)
+        else:
+            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, sendFreeSms)
 
 def sendFreeSms2(message):
-    if message.text == '❌ Cancel':
-        cancelKeyboardHandler(message)
-    else:
-        userId = dbSql.getUserId(message.from_user.id)
-        msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
-        account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-
-        response = acc.sendFreeSms(msisdn, message.text)
-
-        if response.responseDescCode == 'SMS1000':
-            #! SMS sent successfully
-            if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
-                dbSql.setTempdata(userId, 'sendSmsTo', None)
-
-            #! Daily 10 free SMS exceed
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
-                bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Error sending sms (Long text or SMS to own number)
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
-                bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Error sending SMS to off net numbers
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
-                bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Unknown error
-            else:
-                unknownErrorHandler(message, response.content['sendFreeSMSResponse']['description'], response.content['sendFreeSMSResponse']['statusCode'])
-
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-        
-        #: Unknown error
+        if message.text == '❌ Cancel':
+            cancelKeyboardHandler(message)
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
-            
+            if len(message.text) <= 1000:
+                userId = dbSql.getUserId(message.from_user.id)
+                msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
+                account = dbSql.getDefaultAc(userId)
+                acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+
+                response = acc.sendFreeSms(msisdn, message.text)
+
+                if response.responseDescCode == 'SMS1000':
+                    #! SMS sent successfully
+                    if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                        bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                        dbSql.setTempdata(userId, 'sendSmsTo', None)
+
+                    #! Daily 10 free SMS exceed
+                    elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
+                        bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                    #! Error sending SMS to off net numbers
+                    elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                        bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                    #! Unknown error
+                    else:
+                        bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
+                #: Unknown error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            else:
+                sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, sendFreeSms2)
+                    
 def sendPaidSms(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        dbSql.setTempdata(userId, 'sendSmsTo', message.text)
-        sent = bot.send_message(message.from_user.id, language['enterText']['en'], reply_markup=cancelReplyKeyboard())
+        msisdnValid = True
         
-        bot.register_next_step_handler(sent,sendPaidSms2)
+        if len(message.text) != 10:
+            msisdnValid = False
+        else:
+            try:
+                int(message.text)
+            except Exception:
+                msisdnValid = False
+        
+        if msisdnValid:
+            userId = dbSql.getUserId(message.from_user.id)
+            dbSql.setTempdata(userId, 'sendSmsTo', message.text)
+            sent = bot.send_message(message.from_user.id, language['enterText']['en'], reply_markup=cancelReplyKeyboard())
+            
+            bot.register_next_step_handler(sent, sendPaidSms2)
+        
+        else:
+            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, sendPaidSms)
 
 def sendPaidSms2(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
+        if len(message.text) <= 1000:
+            userId = dbSql.getUserId(message.from_user.id)
+            msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
 
-        account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        
-        response = acc.sendSms(msisdn, message.text)
-        if response.responseDescCode == 'SMS1000':
-            #! SMS sent successfully
-            if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
-                dbSql.setTempdata(userId, 'sendSmsTo', None)
+            account = dbSql.getDefaultAc(userId)
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+            
+            response = acc.sendSms(msisdn, message.text)
+            if response.responseDescCode == 'SMS1000':
+                #! SMS sent successfully
+                if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                    bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                    dbSql.setTempdata(userId, 'sendSmsTo', None)
 
-            #! Error no sufficient balance
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
-                bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Error sending sms (Long text or SMS to own number)
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '99':
-                bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Error sending SMS to off net numbers
-            elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
-                bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+                #! Error no sufficient balance
+                elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
+                    bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
+                
+                #! Error sending SMS to off net numbers
+                elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                    bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+                
+                #! Unknown error
+                else:
+                    bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
+                
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
             
             #! Unknown error
             else:
-                unknownErrorHandler(message, response.content['sendFreeSMSResponse']['description'], response.content['sendFreeSMSResponse']['statusCode'])
-
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-        
-        #! Unknown error
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, sendPaidSms2)
 
 #: Self recharge
 @bot.message_handler(commands=['selfrecharge'])
@@ -838,158 +897,237 @@ def selfPinRecharge(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        account = dbSql.getDefaultAc(userId)
-
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        response = acc.selfRecharge(message.text)
-
-        #! Recharge success
-        if 'isRechargeSuccess' in response.content and response.content['isRechargeSuccess'] == True:
-            bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! Incorrect recharge pin
-        elif response.responseDescCode == 'MRG2001':
-            bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! User black Listed
-        elif response.responseDescCode == 'MRG2000':
-            bot.send_message(message.from_user.id, language['rechargeBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-        
-        #! Unknown error
+        rpinValid = True
+        if len(message.text) != 16:
+            rpinValid = False
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            try:
+                int(message.text)
+            except Exception: 
+                rpinValid = False
+        
+        if rpinValid:
+            userId = dbSql.getUserId(message.from_user.id)
+            account = dbSql.getDefaultAc(userId)
+
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+            response = acc.selfRecharge(message.text)
+
+            #! Recharge success
+            if 'isRechargeSuccess' in response.content and response.content['isRechargeSuccess'] == True:
+                bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Incorrect recharge pin
+            elif response.responseDescCode == 'MRG2001':
+                sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, selfPinRecharge)
+
+            #! User black Listed
+            elif response.responseDescCode == 'MRG2000':
+                bot.send_message(message.from_user.id, language['rechargeBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+        
+        else:
+            sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, selfPinRecharge)
 
 #: Self online recharge
 def selfOnlineRecharge(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-    
-        account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        
-        response = acc.onlineRecharge(message.text)
+        invalidAmount = False
+        try:
+            int(message.text)
+        except Exception:
+            invalidAmount = True
 
-        #! Success
-        if response.responseDescCode == 'OPS1000':
-            bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
-        
-        #! Recharge amount is less than zero
-        elif response.responseDescCode in ['OPS2000','OPS2011']:
-            bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! Recharge amount is more than 5000
-        elif response.responseDescCode == 'OPS2012':
-            bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=mainReplyKeyboard(message))
+        if invalidAmount:
+            sent = bot.send_message(message.from_user.id, language['invalidAmount']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, selfOnlineRecharge)
 
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        elif int(message.text) < 1:
+            sent = bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, selfOnlineRecharge)
         
-        #! Unknown error
+        elif int(message.text) > 5000:
+            bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, selfOnlineRecharge)
+        
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            userId = dbSql.getUserId(message.from_user.id)
+        
+            account = dbSql.getDefaultAc(userId)
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+            
+            response = acc.onlineRecharge(message.text)
+
+            #! Success
+            if response.responseDescCode == 'OPS1000':
+                bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Recharge others with pin
 def rechargeOthersPin(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        dbSql.setTempdata(userId, 'rechargeTo', message.text)
-
-        sent = bot.send_message(message.from_user.id,language['enterRechargePin']['en'], reply_markup=cancelReplyKeyboard())
+        msisdnValid = True
+        if len(message.text) != 10:
+            msisdnValid = False
+        else:
+            try:
+                int(message.text)
+            except Exception:
+                msisdnValid = False
         
-        bot.register_next_step_handler(sent,rechargeOthersPin2)
+        if msisdnValid:
+            userId = dbSql.getUserId(message.from_user.id)
+            dbSql.setTempdata(userId, 'rechargeTo', message.text)
+
+            sent = bot.send_message(message.from_user.id,language['enterRechargePin']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent,rechargeOthersPin2)
+        
+        else:
+            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersPin)    
 
 def rechargeOthersPin2(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        msisdn = dbSql.getTempdata(userId, 'rechargeTo')
-        account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+        rpinValid = True
+        if len(message.text) != 16:
+            rpinValid = False
+        else:
+            try:
+                int(message.text)
+            except Exception:
+                rpinValid = False
         
-        response = acc.recharge(msisdn, message.text)
-
-        if 'isRechargeSuccess' in response.content:
-            #! Success
-            if response.content['isRechargeSuccess']:
-                bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+        if rpinValid:
+            userId = dbSql.getUserId(message.from_user.id)
+            msisdn = dbSql.getTempdata(userId, 'rechargeTo')
+            account = dbSql.getDefaultAc(userId)
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
             
-            #? For recharge others, ncell response with same responsecode. So, compairing with description.
-            # FIX THIS NCELL :))
-            elif response.responseDesc == 'MSISDN does not exist.':
-                bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=mainReplyKeyboard(message))
-            elif response.responseDesc == 'The user is in black list.':
-                bot.send_message(message.from_user.id, language['rechargeOBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
-            elif response.responseDesc == 'the password cannot be found in online vc':
-                bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=mainReplyKeyboard(message))
+            response = acc.recharge(msisdn, message.text)
+
+            if 'isRechargeSuccess' in response.content:
+                #! Success
+                if response.content['isRechargeSuccess']:
+                    bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+                
+                #? For recharge others, ncell response with same responsecode. So, compairing with description.
+                # FIX THIS NCELL :))
+                elif response.responseDesc == 'MSISDN does not exist.':
+                    sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+                    bot.register_next_step_handler(sent, rechargeOthersPin)
+                elif response.responseDesc == 'The user is in black list.':
+                    bot.send_message(message.from_user.id, language['rechargeOBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+                elif response.responseDesc == 'the password cannot be found in online vc':
+                    sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+                    bot.register_next_step_handler(sent, rechargeOthersPin2)
+                #! Unknown error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            
             #! Unknown error
             else:
-                unknownErrorHandler(message, response.responseDesc, response.responseCode)
-        
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-        
-        #! Unknown error
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
-        
+            sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersPin2)
+
 #: Recharge others online
 def rechargeOthersOnline(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        dbSql.setTempdata(userId, 'rechargeTo', message.text)
-        sent = bot.send_message(message.from_user.id, language['enterRechargeAmount']['en'], reply_markup=cancelReplyKeyboard())
+        msisdnValid = True
+        if len(message.text) != 10:
+            msisdnValid = False
+        else:
+            try:
+                int(message.text)
+            except Exception:
+                msisdnValid = False
         
-        bot.register_next_step_handler(sent, rechargeOthersOnline2)
+        if msisdnValid:
+            userId = dbSql.getUserId(message.from_user.id)
+            dbSql.setTempdata(userId, 'rechargeTo', message.text)
+            sent = bot.send_message(message.from_user.id, language['enterRechargeAmount']['en'], reply_markup=cancelReplyKeyboard())
+            
+            bot.register_next_step_handler(sent, rechargeOthersOnline2)
+        else:
+            sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersOnline)    
 
 def rechargeOthersOnline2(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     else:
-        userId = dbSql.getUserId(message.from_user.id)
-        msisdn = dbSql.getTempdata(userId, 'rechargeTo')
-        
-        account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        
-        response = acc.onlineRecharge(message.text, msisdn)
+        invalidAmount = False
+        try:
+            int(message.text)
+        except Exception:
+            invalidAmount = True
 
-        #! Success
-        if response.responseDescCode == 'OPS1000':
-            bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
-        
-        #! Invalid number
-        elif response.responseDescCode in ['OPS2104', 'OPS2003']:
-            bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! Recharge amount is less than zero
-        elif response.responseDescCode in ['OPS2000','OPS2011']:
-            bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=mainReplyKeyboard(message))
-        
-        #! Recharge amount is more than 5000
-        elif response.responseDescCode == 'OPS2012':
-            bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=mainReplyKeyboard(message))
+        if invalidAmount:
+            sent = bot.send_message(message.from_user.id, language['invalidAmount']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersOnline2)
 
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+        elif int(message.text) < 1:
+            sent = bot.send_message(message.from_user.id, language['amountLessThanZeroError']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersOnline2)
         
-        #! Unknown error
+        elif int(message.text) > 5000:
+            sent = bot.send_message(message.from_user.id, language['amountMoreThan5000Error']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, rechargeOthersOnline2)
+        
         else:
-            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            userId = dbSql.getUserId(message.from_user.id)
+            msisdn = dbSql.getTempdata(userId, 'rechargeTo')
+            
+            account = dbSql.getDefaultAc(userId)
+            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+            
+            response = acc.onlineRecharge(message.text, msisdn)
+
+            #! Success
+            if response.responseDescCode == 'OPS1000':
+                bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+            
+            #! Invalid number
+            elif response.responseDescCode in ['OPS2104', 'OPS2003']:
+                sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, rechargeOthersOnline)
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
