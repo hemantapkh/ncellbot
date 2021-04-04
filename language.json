@@ -14,6 +14,11 @@
         "np": null
     },
 
+    "reEnterOtp": {
+        "en": "🔑 Enter the new verification code sent to your mobile number.",
+        "np": null
+    },
+
     "registeredSuccessfully": {
         "en": "🙌 {} is registered successfully.",
         "np": null
@@ -35,7 +40,7 @@
     },
 
     "otpSendExceed": {
-       "en": "⚠️ Requested MSISDN is blocked!! Please wait for {} minutes to get a new OTP in this number or register with a different number.",
+       "en": "⚠️ Requested MSISDN is blocked!! Please wait for {} minutes to get a new OTP in this number or enter a different number to register.",
        "np": null
     },
 
@@ -116,6 +121,11 @@
 
     "freeSmsExceed": {
         "en": "⚠️ You have already crossed the free SMS limit.",
+        "np": null
+    },
+
+    "smsTooLong": {
+        "en": "⚠️ Your text is too long. Please enter a text less than 1000 characters.",
         "np": null
     },
 
@@ -216,6 +226,11 @@
 
     "amountMoreThan5000Error": {
         "en": "⚠️ Recharge amount should be less than 5000.",
+        "np": null
+    },
+
+    "invalidAmount": {
+        "en": "⚠️ Invalid recharge amount. Please enter a valid amount.",
         "np": null
     },
 
