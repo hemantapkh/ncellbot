@@ -95,7 +95,7 @@
     },
 
     "sms": {
-        "en": "✉️ <b>SMS</b>\n\nYou can send 10 SMS daily to any Ncell number for free and paid SMS for Rs. 1.20 per SMS. \n\nUnlike Ncell App, the text is not limited to 160 characters. You can send upto 1000 characters at once.😉\n\n<b>Note that paid SMS won't use your SMS packs but deduct the balance instead.</b>",
+        "en": "✉️ <b>SMS</b>\n\nYou can send 10 SMS daily to any Ncell number for free and paid SMS for Rs. 1.20 per SMS. \n\nUnlike Ncell App, the text is not limited to 160 characters. You can send up to 1000 characters at once.😉\n\n<b>Note that paid SMS won't use your SMS packs but deduct the balance instead.</b>",
         "np": null
     },
 
@@ -195,7 +195,7 @@
     },
 
     "noEnoughBalanceToSub": {
-        "en": "⚠️ You do not have sufficient balance to subscribe this product.",
+        "en": "⚠️ You do not have sufficient balance to subscribe to this product.",
         "np": null
     },
 
@@ -220,12 +220,12 @@
     },
 
     "rechargeBlackListed": {
-        "en": "⚠️ You number is black listed and you can't recharge with pin for some time. Wait for sometime or recharge with online method.",
+        "en": "⚠️ Your number is blacklisted and you can't recharge with a pin for some time. Wait for sometime or recharge with the online method.",
         "np": null
     },
 
     "rechargeOBlackListed": {
-        "en": "⚠️ The number you are trying to recharge is black listed and you can't recharge them with pin for some time. Wait for sometime or recharge with online method.",
+        "en": "⚠️ The number you are trying to recharge is blacklisted and you can't recharge them with a pin for some time. Wait for sometime or recharge with the online method.",
         "np": null
     },
 
