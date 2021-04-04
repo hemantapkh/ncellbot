@@ -81,6 +81,15 @@ def cancelReplyKeyboard():
 
     return cancelKeyboard
 
+#: Cancel keyboard with resent OTP option
+def cancelReplyKeyboardOtp():
+    cancelKeyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    cancelButton = telebot.types.KeyboardButton(text='❌ Cancel')
+    resendButton = telebot.types.KeyboardButton(text='🔁 Re-send OTP')
+    cancelKeyboard.row(resendButton, cancelButton)
+
+    return cancelKeyboard
+
 #: Main reply keyboard
 def mainReplyKeyboard(message):
     keyboard = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -201,7 +210,7 @@ def getOtp(message, called=False):
 
             #! OTP sent successfully
             if response.responseDescCode == 'OTP1000':
-                sent = bot.send_message(message.from_user.id, language['enterOtp']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
+                sent = bot.send_message(message.from_user.id, language['enterOtp']['en'], reply_markup=cancelReplyKeyboardOtp())
                 if not called:
                     #!? Add the msisdn in the database if not called
                     dbSql.setTempdata(dbSql.getUserId(message.from_user.id), 'registerMsisdn', message.text)     
@@ -210,12 +219,13 @@ def getOtp(message, called=False):
         
             #! OTP generation exceed
             elif response.responseDescCode == 'OTP2005':
+                retryAfter = response.responseDesc.split()[4]
                 #!? Remove the MSISDN from temp database
                 dbSql.setTempdata(userId, 'registerMsisdn', None)
                 if called:
-                    sent = bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+                    sent = bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['otpSendExceed']['en'].format(retryAfter), reply_markup=cancelReplyKeyboard())
                 else:
-                    sent = bot.send_message(message.from_user.id, language['otpSendExceed']['en'], reply_markup=cancelReplyKeyboard())
+                    sent = bot.send_message(message.from_user.id, language['otpSendExceed']['en'].format(retryAfter), reply_markup=cancelReplyKeyboard())
                     bot.register_next_step_handler(sent, getOtp)
         
             #! Invalid Number
@@ -239,60 +249,69 @@ def getToken(message):
         msisdn = dbSql.getTempdata(userId, 'registerMsisdn')
         ac = ncellapp.register(msisdn)
 
-        otpValid = True
-        if len(message.text) != 6:
-            otpValid = False
-        else:
-            try:
-                int(message.text)
-            except Exception:
-                otpValid = False
-        
-        if otpValid:
-            response = ac.getToken(message.text)
-            
-            #! Successfully registered
+        if message.text == '🔁 Re-send OTP' and msisdn:
+            response = ac.sendOtp()
+
+            #! Re-send OTP success
             if response.responseDescCode == 'OTP1000':
-                dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
-                
-                #!? Remove the register msisdn from the database
-                dbSql.setTempdata(userId,'registerMsisdn', None)
-                
-                bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'].format(msisdn), reply_markup=mainReplyKeyboard(message))
-            
-            #! OTP attempts exceed
-            elif response.responseDescCode == 'OTP2002':
-                bot.send_message(message.from_user.id, language['otpAttemptExceed']['en'], reply_markup=genMarkup_invalidOtp(reEnter=False))
-            
-            #! Invalid OTP
-            elif response.responseDescCode == 'OTP2003':
-                bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
-            
-            #! OTP Expired
-            elif response.responseDescCode == 'OTP2006':
-                bot.send_message(message.from_user.id, language['otpExpired']['en'], reply_markup=genMarkup_invalidOtp())
+                sent = bot.send_message(message.from_user.id, language['reEnterOtp']['en'], reply_markup=cancelReplyKeyboardOtp())
+                bot.register_next_step_handler(sent, getToken)
+
+            #! OTP send exceed
+            elif response.responseDescCode == 'OTP2005':
+                retryAfter = response.responseDesc.split()[4]
+                sent = bot.send_message(message.from_user.id, language['otpSendExceed']['en'].format(retryAfter), reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, getOtp)
 
             #! Unknown error
             else:
                 UnknownErrorHandler(message, response.responseDesc, response.statusCode)
-
+       
         else:
-            bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=genMarkup_invalidOtp())
+            otpValid = True
+            if len(message.text) != 6:
+                otpValid = False
+            else:
+                try:
+                    int(message.text)
+                except Exception:
+                    otpValid = False
+            
+            if otpValid:
+                response = ac.getToken(message.text)
+                
+                #! Successfully registered
+                if response.responseDescCode == 'OTP1000':
+                    dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
+                    
+                    #!? Remove the register msisdn from the database
+                    dbSql.setTempdata(userId, 'registerMsisdn', None)
+                    
+                    bot.send_message(message.from_user.id, language['registeredSuccessfully']['en'].format(msisdn), reply_markup=mainReplyKeyboard(message))
+                
+                #! OTP attempts exceed
+                elif response.responseDescCode == 'OTP2002':
+                    sent = bot.send_message(message.from_user.id, language['otpAttemptExceed']['en'], reply_markup=cancelReplyKeyboardOtp())
+                    bot.register_next_step_handler(sent, getToken)
+                
+                #! Invalid OTP
+                elif response.responseDescCode == 'OTP2003':
+                    sent = bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=cancelReplyKeyboardOtp())
+                    bot.register_next_step_handler(sent, getToken)
+                
+                #! OTP Expired
+                elif response.responseDescCode == 'OTP2006':
+                    sent = bot.send_message(message.from_user.id, language['otpExpired']['en'], reply_markup=cancelReplyKeyboardOtp())
+                    bot.register_next_step_handler(sent, getToken)
 
-#: Keyboard markup for unsuccessful registration
-def genMarkup_invalidOtp(reEnter=True):
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.one_time_keyboard=True
-    markup.row_width = 2
-    
-    #!? Add button to re-enter the otp if reEnter is True
-    if reEnter:
-        markup.row(telebot.types.InlineKeyboardButton('Re-Enter OTP', callback_data='cb_reEnterOtp'))
-    
-    markup.add(telebot.types.InlineKeyboardButton('Re-send OTP', callback_data='cb_reSendOtp'),
-        telebot.types.InlineKeyboardButton('Change Number', callback_data='cb_changeRegisterNumber'))
+                #! Unknown error
+                else:
+                    dbSql.setTempdata(userId, 'registerMsisdn', None)
+                    UnknownErrorHandler(message, response.responseDesc, response.statusCode)
 
-    return markup
+            else:
+                sent = bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=cancelReplyKeyboardOtp())
+                bot.register_next_step_handler(sent, getToken)
 
 #: Manage accounts
 @bot.message_handler(commands=['accounts'])
@@ -1190,22 +1209,8 @@ def callback_query(call):
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.id, reply_markup=genMarkup_accounts(message=call, action='remove'))
         else:
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['noAccounts']['en'])
-
-    #! Re-enter the OTP
-    elif call.data == 'cb_reEnterOtp':
-        sent = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['enterOtp']['en'])
-        bot.register_next_step_handler(sent, getToken)
-
-    #! Re-sent the OTP to the given number
-    elif call.data == 'cb_reSendOtp':
-        getOtp(message=call, called=True)
-    
-    #! Change the register number
-    elif call.data == 'cb_changeRegisterNumber':
-        sent = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['enterNumber']['en'])
-        bot.register_next_step_handler(sent, getOtp)
-    
-    #! Callback handler for Regigter with Cancel keyboard
+        
+    #! Callback handler for Register
     elif call.data == 'cb_registerNumber':
         bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         register(call)
