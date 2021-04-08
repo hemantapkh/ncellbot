@@ -134,7 +134,6 @@ def mainReplyKeyboard(message):
 
 #: Cancel handler
 def cancelKeyboardHandler(message):
-    userId = dbSql.getUserId(message.from_user.id)
     bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
 
 #: Invalid refresh token handler for callbacks
@@ -151,7 +150,7 @@ def invalidRefreshTokenHandler(message, userId, responseCode):
     bot.send_message(message.from_user.id, language['newLoginFound']['en'] if responseCode=='LGN2003' else language['sessionExpired']['en'], reply_markup=mainReplyKeyboard(message))
             
 #: Unknown error handler for callbacks
-def UnknownErrorHandler_cb(call, description, statusCode):
+def unknownErrorHandler_cb(call, description, statusCode):
     bot.answer_callback_query(call.id, text=language['unknwonError']['en'].format(description, statusCode), show_alert=True)
 
 #: Unknown error handler for messages
@@ -171,7 +170,7 @@ def start(message):
         bot.send_message(message.from_user.id, text=language['greet']['en'].format(message.from_user.first_name), reply_markup=mainReplyKeyboard(message))
     else:
         #!? If not, add the user in the database
-        #dbSql.setUserId(telegramId)
+        dbSql.setUserId(telegramId)
         bot.send_message(message.from_user.id, text=language['greetFirstTime']['en'].format(message.from_user.first_name),disable_web_page_preview=True, reply_markup=mainReplyKeyboard(message))
 
 #! Ping pong
@@ -234,7 +233,7 @@ def getOtp(message, called=False):
                 bot.register_next_step_handler(sent, getOtp)
             
             else:
-                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
         #! Invalid number
         else:
@@ -265,7 +264,7 @@ def getToken(message):
 
             #! Unknown error
             else:
-                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
        
         else:
             otpValid = True
@@ -307,7 +306,7 @@ def getToken(message):
                 #! Unknown error
                 else:
                     dbSql.setTempdata(userId, 'registerMsisdn', None)
-                    UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
 
             else:
                 sent = bot.send_message(message.from_user.id, language['invalidOtp']['en'], reply_markup=cancelReplyKeyboardOtp())
@@ -501,7 +500,7 @@ def profile(message):
             
             #! Error
             else:
-                UnknownErrorHandler(message, response.responseDesc, response.statusCode)
+                unknownErrorHandler(message, response.responseDesc, response.statusCode)
         else:
             register(message)
 
@@ -1282,7 +1281,7 @@ def callback_query(call):
         
         #! Unknown error
         else:
-            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
+            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         
     #! Back to balance
     elif call.data == 'cb_backToBalance':
@@ -1313,7 +1312,7 @@ def callback_query(call):
             decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
 
             response = ast.literal_eval(decodedResponse)
-            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
         
         #!? If no error, send reply markup
         else:
@@ -1359,7 +1358,7 @@ def callback_query(call):
         
         #! Unknown error
         else:
-            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Data plans Catagory
     elif call.data == 'cb_dataPlans':
@@ -1378,7 +1377,7 @@ def callback_query(call):
             decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
 
             response = ast.literal_eval(decodedResponse)
-            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
         
         #! Send reply markup if no errors
         else:
@@ -1433,7 +1432,7 @@ def callback_query(call):
         
         #! Unknown error
         else:
-            UnknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Deactivation not allowed
     elif call.data == 'cb_deactivationNotAllowed':
@@ -1463,11 +1462,11 @@ def callback_query(call):
         
         #! Product already deactivated
         elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
         
         #! Unknown error
         else:
-            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
+            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
 
     #: Activate product
     elif call.data[:15] == 'cb_activatePlan':
@@ -1490,11 +1489,11 @@ def callback_query(call):
         
         #! Invalid refresh token
         elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
         
         #! Unknown error
         else:
-            UnknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
+            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
 
     #! Go back to plan catagory
     elif call.data == 'cb_backToPlans':
