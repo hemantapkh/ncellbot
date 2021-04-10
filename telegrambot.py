@@ -200,18 +200,23 @@ def encryptionSetup(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     
-    elif len(message.text) < 16:
+    elif len(message.text) < 8:
         sent = bot.send_message(message.from_user.id, text=language['invalidPasspharse']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, encryptionSetup)
 
     else:
         userId = dbSql.getUserId(message.from_user.id)
+        
+        #! If the length of the passphrase is smaller than 16, add '0' to make 16 digit passphrase
+        extraPassphrase = '0'*(16-len(message.text))
+        key = message.text + extraPassphrase
 
         PassphraseHash = mycrypto.genHash(message.text)
-        privateKey, publicKey = mycrypto.generateKeys(message.text)
+        privateKey, publicKey = mycrypto.generateKeys(key)
 
         dbSql.setSetting(userId, 'privateKey', privateKey)
         dbSql.setSetting(userId, 'publicKey', publicKey)
+        dbSql.setSetting(userId, 'extraPassphrase', extraPassphrase)
         dbSql.setSetting(userId, 'PassphraseHash', PassphraseHash)
         dbSql.setSetting(userId, 'isEncrypted', True)
 
@@ -236,7 +241,7 @@ def changePassphrase2(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     
-    elif len(message.text) < 16:
+    elif len(message.text) < 8:
         sent = bot.send_message(message.from_user.id, text=language['invalidPasspharse']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, changePassphrase2)
 
@@ -250,16 +255,23 @@ def changePassphrase2(message):
             bot.register_next_step_handler(sent, changePassphrase2)
         
         else:
+            #! If the length of the passphrase is smaller than 16, add '0' to make 16 digit passphrase
+            extraPassphrase = '0'*(16-len(message.text))
+            key = message.text + extraPassphrase
+
             #! Decrypt the privatekey
             encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
-            aes = mycrypto.AESCipher(oldPassphrase)
+            oldExtraPassphrase = dbSql.getSetting(userId, 'extraPassphrase')
+            aes = mycrypto.AESCipher(oldPassphrase + (oldExtraPassphrase if oldExtraPassphrase else ''))
+
             privateKey = aes.decrypt(encryptedPrivateKey)
 
             #! Encrypt the private key with the new passphrase
-            aes = mycrypto.AESCipher(message.text)
+            aes = mycrypto.AESCipher(key)
             encryptedPrivateKey = aes.encrypt(privateKey)
             
             dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
+            dbSql.setSetting(userId, 'extraPassphrase', extraPassphrase)
             dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
 
             bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
