@@ -244,17 +244,25 @@ def changePassphrase2(message):
         userId = dbSql.getUserId(message.from_user.id)
         oldPassphrase = dbSql.getTempdata(userId, 'oldPassphrase')
 
-        #! Decrypt the privatekey
-        encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
-        aes = mycrypto.AESCipher(oldPassphrase)
-        privateKey = aes.decrypt(encryptedPrivateKey)
+        #! If new passphrase is same as old passphrase
+        if message.text == oldPassphrase:
+            sent = bot.send_message(message.from_user.id, text=language['samePassphrase']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, changePassphrase2)
+        
+        else:
+            #! Decrypt the privatekey
+            encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
+            aes = mycrypto.AESCipher(oldPassphrase)
+            privateKey = aes.decrypt(encryptedPrivateKey)
 
-        #! Encrypt the private key with the new passphrase
-        aes = mycrypto.AESCipher(message.text)
-        encryptedPrivateKey = aes.encrypt(privateKey)
-        dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
+            #! Encrypt the private key with the new passphrase
+            aes = mycrypto.AESCipher(message.text)
+            encryptedPrivateKey = aes.encrypt(privateKey)
+            
+            dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
+            dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
 
-        bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+            bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
 
 #: Remove encryption
 def encryptionRemove(message):
