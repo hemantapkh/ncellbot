@@ -1,7 +1,8 @@
-# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files / Temp
 __pycache__/
 *.py[cod]
 *$py.class
+tempCodeRunnerFile.py
 
 # C extensions
 *.so

@@ -5,7 +5,7 @@ from aiohttp import web
 import ast, inspect, logging
 import json, base64, time, ssl
 
-import models
+import mycrypto, models
 
 #!? Finding the absolute path of the config file
 scriptPath = path.abspath(__file__)
@@ -127,8 +127,8 @@ def mainReplyKeyboard(message):
     #! Reply keyboard for the users without any account
     else:
         keyboard.row(button2)
-        keyboard.row(button10, button3)
-        keyboard.row(button11, button12)
+        keyboard.row(button3)
+        keyboard.row(button10, button11, button12)
 
     return keyboard
 
@@ -177,6 +177,103 @@ def start(message):
 @bot.message_handler(commands=['ping'])
 def ping(message):
     bot.send_message(message.from_user.id, text=language['ping']['en'], reply_markup=mainReplyKeyboard(message))
+
+#! Encryption
+@bot.message_handler(commands=['encryption'])
+def encryption(message):
+    userId = dbSql.getUserId(message.from_user.id)
+    
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.one_time_keyboard=True
+    markup.row_width = 2
+        
+    if dbSql.getSetting(userId, 'isEncrypted'):
+        markup.add(telebot.types.InlineKeyboardButton('Change passphrase', callback_data='cb_changePassphrase'), telebot.types.InlineKeyboardButton('Remove encryption', callback_data='cb_encryptionRemove'), telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
+        bot.send_message(message.from_user.id, text=language['encryption']['en'], reply_markup=markup)
+        
+    else:
+        markup.add(telebot.types.InlineKeyboardButton('Set up encryption', callback_data='cb_encryptionSetup'), telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
+        bot.send_message(message.from_user.id, text=language['encryption']['en'], reply_markup=markup)
+
+#: Set up encryption
+def encryptionSetup(message):
+    if message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    elif len(message.text) < 16:
+        sent = bot.send_message(message.from_user.id, text=language['invalidPasspharse']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, encryptionSetup)
+
+    else:
+        userId = dbSql.getUserId(message.from_user.id)
+
+        PassphraseHash = mycrypto.genHash(message.text)
+        privateKey, publicKey = mycrypto.generateKeys(message.text)
+
+        dbSql.setSetting(userId, 'privateKey', privateKey)
+        dbSql.setSetting(userId, 'publicKey', publicKey)
+        dbSql.setSetting(userId, 'PassphraseHash', PassphraseHash)
+        dbSql.setSetting(userId, 'isEncrypted', True)
+
+        bot.send_message(message.from_user.id, text=language['encryptionSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+
+#: Change encryption passphrase
+def changePassphrase(message):
+    userId = dbSql.getUserId(message.from_user.id)
+    if mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
+        dbSql.setTempdata(userId, 'oldPassphrase', message.text)
+        sent = bot.send_message(message.from_user.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, changePassphrase2)
+
+    elif message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    else:
+        sent = bot.send_message(message.from_user.id, text=language['incorrectPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, changePassphrase)
+
+def changePassphrase2(message):
+    if message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    elif len(message.text) < 16:
+        sent = bot.send_message(message.from_user.id, text=language['invalidPasspharse']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, changePassphrase2)
+
+    else:
+        userId = dbSql.getUserId(message.from_user.id)
+        oldPassphrase = dbSql.getTempdata(userId, 'oldPassphrase')
+
+        #! Decrypt the privatekey
+        encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
+        aes = mycrypto.AESCipher(oldPassphrase)
+        privateKey = aes.decrypt(encryptedPrivateKey)
+
+        #! Encrypt the private key with the new passphrase
+        aes = mycrypto.AESCipher(message.text)
+        encryptedPrivateKey = aes.encrypt(privateKey)
+        dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
+
+        bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+
+#: Remove encryption
+def encryptionRemove(message):
+    if message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    elif message.text == 'CONFIRM':
+        userId = dbSql.getUserId(message.from_user.id)
+        dbSql.deleteAccounts(userId)
+        dbSql.setSetting(userId, 'isEncrypted', None)
+        dbSql.setSetting(userId, 'privateKey', None)
+        dbSql.setSetting(userId, 'publicKey', None)
+        dbSql.setSetting(userId, 'passphraseHash', None)
+
+        bot.send_message(message.from_user.id, text=language['encryptionRemoved']['en'], reply_markup=mainReplyKeyboard(message))
+    
+    else:
+        sent = bot.send_message(message.from_user.id, text=language['encryptionRemoveInvalid']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, encryptionRemove)
 
 @bot.message_handler(commands=['register'])
 def register(message):
@@ -281,7 +378,7 @@ def getToken(message):
                 
                 #! Successfully registered
                 if response.responseDescCode == 'OTP1000':
-                    dbSql.setAccount(userId, ac.token, models.genHash(msisdn))
+                    dbSql.setAccount(userId, ac.token, mycrypto.genHash(msisdn))
                     
                     #!? Remove the register msisdn from the database
                     dbSql.setTempdata(userId, 'registerMsisdn', None)
@@ -634,7 +731,7 @@ def genMarkup_products(message):
         markup.one_time_keyboard=True
         markup.row_width = 2
 
-        ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+        ac = ncellapp.ncell(account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
         if planType == 'data':
             response = ac.dataPlans(catagoryId)
@@ -1167,6 +1264,24 @@ def callback_query(call):
         else:
             bot.answer_callback_query(call.id, language['notSubscribedCallback']['en'])
 
+    #! Encryption setup
+    elif call.data == 'cb_encryptionSetup':
+        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionPasspharse']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, encryptionSetup)
+    
+    #! Encryption remove
+    elif call.data == 'cb_encryptionRemove':
+        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, encryptionRemove)
+
+    #! Change encryption passphrase
+    elif call.data == 'cb_changePassphrase':
+        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterCurrentPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, changePassphrase)
+
    #! Select action for /accounts     
     elif call.data == 'cb_selectAccount':
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accounts']['en'], reply_markup=genMarkup_accounts(message=call, action='select'))
@@ -1503,6 +1618,9 @@ def callback_query(call):
 def replyKeyboard(message):
     if message.text == '➕ Register':
         register(message)
+
+    elif message.text == '🔐 Encryption':
+        encryption(message)
     
     elif message.text == '💬 SMS':
         sms(message)
