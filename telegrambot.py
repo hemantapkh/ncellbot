@@ -106,6 +106,8 @@ def mainReplyKeyboard(message):
     button11 = telebot.types.KeyboardButton(text='⁉️ Help')
     button12 = telebot.types.KeyboardButton(text='🎁 Support Us')
     button13 = telebot.types.KeyboardButton(text='🏳️‍🌈 Others')
+    button14 = telebot.types.KeyboardButton(text='🔒 Lock')
+    button15 = telebot.types.KeyboardButton(text='🔓 Unlock')
 
     userId = dbSql.getUserId(message.from_user.id)
     account = dbSql.getAccounts(userId)
@@ -117,12 +119,21 @@ def mainReplyKeyboard(message):
             keyboard.row(button9, button1)
             keyboard.row(button4, button5, button6)
             keyboard.row(button6, button7, button13)
-            keyboard.row(button10, button11, button12)  
+            #!? LOck and unlock buttons for encrypted users
+            if dbSql.getSetting(userId, 'isEncrypted'):
+                isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
+                keyboard.row(button10, button14 if isUnlocked else button15, button11)
+            else:
+                keyboard.row(button10, button11, button12)
         else:
             #!? Only one account
             keyboard.row(button4, button5, button1)
             keyboard.row(button6, button7, button8)
-            keyboard.row(button10, button11, button12)
+            if dbSql.getSetting(userId, 'isEncrypted'):
+                isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
+                keyboard.row(button10, button14 if isUnlocked else button15, button11)
+            else:
+                keyboard.row(button10, button11, button12)
 
     #! Reply keyboard for the users without any account
     else:
@@ -238,13 +249,15 @@ def encryptionSetup(message):
 #: Change encryption passphrase
 def changePassphrase(message):
     userId = dbSql.getUserId(message.from_user.id)
-    if mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
+
+    if message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    #! If the passphrase hash match the message text
+    elif mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
         dbSql.setTempdata(userId, 'oldPassphrase', message.text)
         sent = bot.send_message(message.from_user.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, changePassphrase2)
-
-    elif message.text == '❌ Cancel':
-        cancelKeyboardHandler(message)
     
     else:
         sent = bot.send_message(message.from_user.id, text=language['incorrectPassphrase']['en'], reply_markup=cancelReplyKeyboard())
@@ -285,8 +298,10 @@ def changePassphrase2(message):
             
             dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
             dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
+            dbSql.setSetting(userId, 'isUnlocked', None)
 
             bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+            bot.unpin_all_chat_messages(message.from_user.id)
 
 #: Remove encryption
 def encryptionRemove(message):
@@ -346,10 +361,32 @@ def decryptIf(message, text):
     else:
         return text
 
+#: Get the pinned message
 def pinnedText(message):
     data = bot.get_chat(message.from_user.id).pinned_message
 
     return (data.__dict__['text'],data.__dict__['message_id']) if data else None
+
+#: Unlock the encrypted account
+def unlock(message):
+    sent = bot.send_message(message.from_user.id, language['enterPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+    bot.register_next_step_handler(sent, unlock2)
+
+def unlock2(message):
+    userId = dbSql.getUserId(message.from_user.id)
+    if mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
+        dbSql.setSetting(userId, 'isUnlocked', True)
+        bot.send_message(message.from_user.id, language['unlockedSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
+
+        bot.unpin_all_chat_messages(message.from_user.id)
+        bot.pin_chat_message(message.from_user.id, message.id)
+
+    elif message.text == '❌ Cancel':
+        cancelKeyboardHandler(message)
+    
+    else:
+        sent = bot.send_message(message.from_user.id, text=language['incorrectPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, unlock2)
 
 @bot.message_handler(commands=['register'])
 def register(message):
@@ -535,7 +572,7 @@ def switch(message):
     accounts = dbSql.getAccounts(userId)
 
     if accounts:
-        #if len(accounts) > 1:
+        if len(accounts) > 1:
             defaultAcID = dbSql.getSetting(userId, 'defaultAcId')
 
             #!? Get the index of current default account
@@ -1823,6 +1860,17 @@ def replyKeyboard(message):
 
     elif message.text == '🔐 Encryption':
         encryption(message)
+
+    elif message.text in ['🔒 Lock', '/lock']:
+        userId = dbSql.getUserId(message.from_user.id)
+        
+        dbSql.setSetting(userId, 'isUnlocked', None)
+        bot.send_message(message.from_user.id, language['lockedSuccessfully']['en'], reply_markup=mainReplyKeyboard(message))
+
+        bot.unpin_all_chat_messages(message.from_user.id)
+
+    elif message.text in ['🔓 Unlock', '/unlock']:
+        unlock(message)
     
     elif message.text == '💬 SMS':
         sms(message)
