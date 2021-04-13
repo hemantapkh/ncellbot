@@ -157,8 +157,22 @@ def unknownErrorHandler_cb(call, description, statusCode):
 def unknownErrorHandler(message, description, statusCode):
     bot.send_message(message.from_user.id, text=language['unknwonError']['en'].format(description, statusCode), reply_markup=mainReplyKeyboard(message))
 
+#: Passphrase error handler
+def passphraseErrorHandler(message, state, called):
+    if state == 'NONE':
+        if called:
+            bot.answer_callback_query(message.id, text=language['passphraseNotPinned']['en'], show_alert=True)
+        else:
+            bot.send_message(message.from_user.id, text=language['passphraseNotPinned']['en'])
+    else:
+        if called:
+            bot.answer_callback_query(message.id, text=language['pinnedPassphraseIncorrect']['en'], show_alert=True)
+        else:
+            bot.send_message(message.from_user.id, text=language['pinnedPassphraseIncorrect']['en'])
+
 #: Updating the token in database after refreshing
-def autoRefreshToken(userId, token): 
+def autoRefreshToken(userId, token):
+    token = encryptIf(userId, token)
     dbSql.updateAccount(userId,dbSql.getSetting(userId, 'defaultAcId'), token)
    
 @bot.message_handler(commands=['start'])
@@ -216,7 +230,6 @@ def encryptionSetup(message):
 
         dbSql.setSetting(userId, 'privateKey', privateKey)
         dbSql.setSetting(userId, 'publicKey', publicKey)
-        dbSql.setSetting(userId, 'extraPassphrase', extraPassphrase)
         dbSql.setSetting(userId, 'PassphraseHash', PassphraseHash)
         dbSql.setSetting(userId, 'isEncrypted', True)
 
@@ -261,7 +274,7 @@ def changePassphrase2(message):
 
             #! Decrypt the privatekey
             encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
-            oldExtraPassphrase = dbSql.getSetting(userId, 'extraPassphrase')
+            oldExtraPassphrase = '0'*(16-len(oldPassphrase))
             aes = mycrypto.AESCipher(oldPassphrase + (oldExtraPassphrase if oldExtraPassphrase else ''))
 
             privateKey = aes.decrypt(encryptedPrivateKey)
@@ -271,7 +284,6 @@ def changePassphrase2(message):
             encryptedPrivateKey = aes.encrypt(privateKey)
             
             dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
-            dbSql.setSetting(userId, 'extraPassphrase', extraPassphrase)
             dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
 
             bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
@@ -294,6 +306,50 @@ def encryptionRemove(message):
     else:
         sent = bot.send_message(message.from_user.id, text=language['encryptionRemoveInvalid']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, encryptionRemove)
+
+#: Encrypt if encryption is on
+def encryptIf(userId, text):
+    if dbSql.getSetting(userId, 'isEncrypted'):
+        publicKey = dbSql.getSetting(userId, 'publicKey')
+        encryptedText = mycrypto.encrypt(text, publicKey)
+
+        return encryptedText
+    
+    else:
+        return text
+
+#: Decrypt if encryption is on
+def decryptIf(message, text):
+    userId = dbSql.getUserId(message.from_user.id)
+
+    if dbSql.getSetting(userId, 'isEncrypted'):
+        pinned = pinnedText(message)
+        #! If passphrase is pinned
+        if pinned:
+            passphrase = pinned[0]
+            if mycrypto.genHash(passphrase) == dbSql.getSetting(userId, 'passphraseHash'):
+                privateKey = dbSql.getSetting(userId, 'privateKey')
+                decryptedText = mycrypto.decrypt(text, privateKey, passphrase + '0'*(16-len(passphrase)))
+
+                return decryptedText
+            
+            #! Pinned passphrase incorrect
+            else:
+                bot.unpin_chat_message(message.from_user.id, message_id=pinned[1])
+                dbSql.setTempdata(userId, 'passphraseState', 'INVALID')
+        
+        #! No pinned message
+        else:
+            bot.unpin_all_chat_messages(message.from_user.id)
+            dbSql.setTempdata(userId, 'passphraseState', 'NONE')
+        
+    else:
+        return text
+
+def pinnedText(message):
+    data = bot.get_chat(message.from_user.id).pinned_message
+
+    return (data.__dict__['text'],data.__dict__['message_id']) if data else None
 
 @bot.message_handler(commands=['register'])
 def register(message):
@@ -398,7 +454,8 @@ def getToken(message):
                 
                 #! Successfully registered
                 if response.responseDescCode == 'OTP1000':
-                    dbSql.setAccount(userId, ac.token, mycrypto.genHash(msisdn))
+                    token = encryptIf(userId, ac.token)
+                    dbSql.setAccount(userId, token, mycrypto.genHash(msisdn))
                     
                     #!? Remove the register msisdn from the database
                     dbSql.setTempdata(userId, 'registerMsisdn', None)
@@ -443,9 +500,10 @@ def genMarkup_accounts(message, action):
 
     if accounts:
         buttons = []
-        for i in range(len(accounts)):
-            msisdn = ast.literal_eval(base64.b64decode(accounts[i][1]).decode())['msisdn']
-            accountId = accounts[i][0]
+        for i, account in enumerate(accounts):
+            token = decryptIf(message, account[1])
+            msisdn =  ast.literal_eval(base64.b64decode(token).decode())['msisdn'] if token else f'Encrypted {i+1}' 
+            accountId = account[0]
             
             #!? Emoji for logged in account
             if str(accountId) == str(defaultAcId):
@@ -475,26 +533,35 @@ def genMarkup_accounts(message, action):
 def switch(message):
     userId = dbSql.getUserId(message.from_user.id)
     accounts = dbSql.getAccounts(userId)
+
     if accounts:
-        defaultAcID = dbSql.getSetting(userId, 'defaultAcId')
+        #if len(accounts) > 1:
+            defaultAcID = dbSql.getSetting(userId, 'defaultAcId')
 
-        #!? Get the index of current default account
-        for i,j in enumerate(accounts):
-            if j[0] == defaultAcID:
-                defaultAcIndex = i
-        
-        #!? If (condition), more accounts should be there ahead of that index
-        ## Make defaultAcIndex+1 as the default account
-        if len(accounts) > defaultAcIndex+1:
-            accountId = accounts[defaultAcIndex+1][0]
-            dbSql.setSetting(userId, 'defaultAcId', accountId)
+            #!? Get the index of current default account
+            for i,j in enumerate(accounts):
+                if j[0] == defaultAcID:
+                    defaultAcIndex = i
+            
+            #!? If (condition), more accounts should be there ahead of that index
+            ## Make defaultAcIndex+1 as the default account
+            if len(accounts) > defaultAcIndex+1:
+                accountId = accounts[defaultAcIndex+1][0]
+                dbSql.setSetting(userId, 'defaultAcId', accountId)
 
-        #!? If no accounts ahead, make the first account as the default account
-        else:
-            accountId = accounts[0][0]
-            dbSql.setSetting(userId, 'defaultAcId', accountId)
+                defaultAcIndex += 2
 
-        bot.send_message(message.chat.id, f"{language['loggedinAs']['en'].format(accountId)}")
+            #!? If no accounts ahead, make the first account as the default account
+            else:
+                accountId = accounts[0][0]
+                dbSql.setSetting(userId, 'defaultAcId', accountId)
+
+                defaultAcIndex = 1
+            
+            account = dbSql.getDefaultAc(userId)
+            token = decryptIf(message, account[1])
+            msisdn = ast.literal_eval(base64.b64decode(token).decode())['msisdn'] if token else f'encrypted {defaultAcIndex}'
+            bot.send_message(message.chat.id, f"{language['loggedinAs']['en'].format(msisdn)}")
     else:
         register(message)
 
@@ -506,20 +573,34 @@ def balance(message, called=False):
         account = dbSql.getDefaultAc(userId)
         
         if account:
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
-            response = acc.viewBalance()
-            
-            #! Success
-            if response.responseDescCode == 'BAL1000':
-                balanceFormat(message, response.content['queryBalanceResponse'], called)
-            
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-            
-            #! Unknown error
+            token = decryptIf(message, account[1])
+            if token:
+                acc = ncellapp.ncell(token=token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
+                response = acc.viewBalance()
+                
+                #! Success
+                if response.responseDescCode == 'BAL1000':
+                    balanceFormat(message, response.content['queryBalanceResponse'], called)
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    if called:
+                        invalidRefreshTokenHandler_cb(message, userId, response.responseDescCode)
+                    else:
+                        invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
+                #! Unknown error
+                else:
+                    if called:
+                        unknownErrorHandler_cb(message, response.responseDesc, response.statusCode)
+                    else:
+                        unknownErrorHandler(message, response.responseDesc, response.statusCode)
+           
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called)
+
         else:
             register(message)
 
@@ -580,7 +661,7 @@ def loan(message, called=False):
         userId = dbSql.getUserId(message.from_user.id)
         account = dbSql.getDefaultAc(userId)
 
-        if account:
+        if account:  
             markup = telebot.types.InlineKeyboardMarkup()
             markup.one_time_keyboard=True
         
@@ -591,6 +672,7 @@ def loan(message, called=False):
                 bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['confirmLoan']['en'], reply_markup=markup)
             else:     
                 bot.send_message(message.from_user.id, language['confirmLoan']['en'], reply_markup=markup)
+
         else:
             if called:
                 bot.delete_message(chat_id=message.message.chat.id, message_id=message.message.id)
@@ -604,20 +686,28 @@ def profile(message):
         account = dbSql.getDefaultAc(userId)
 
         if account:
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            response = acc.viewProfile()
+            token = decryptIf(message, account[1])
             
-            #! Success
-            if response.responseDescCode == 'SUB1000':
-                profileFormat(message, response.content['querySubscriberProfileResponse'])
+            if token:
+                acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                response = acc.viewProfile()
+                
+                #! Success
+                if response.responseDescCode == 'SUB1000':
+                    profileFormat(message, response.content['querySubscriberProfileResponse'])
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)  
+                
+                #! Error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)  
-            
-            #! Error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
         else:
             register(message)
 
@@ -672,54 +762,61 @@ def genMarkup_subscribedPlans(message):
     account = dbSql.getDefaultAc(userId)
 
     if accounts:
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.one_time_keyboard=True
-        markup.row_width = 2
+        token = decryptIf(message, account[1])
 
-        ac = ncellapp.ncell(account[1],autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-        response = ac.subscribedProducts()
-        
-        #! Success
-        if response.responseDescCode == 'BIL2000':
-            #! Set status success for use in callback handler
-            Response = {'status': 'success'}
-            Response['productList'] = response.content['queryAllProductsResponse']['productList']
+        if token:
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+            markup.row_width = 2
 
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
-
-            shortButtons =  []
-            for i in Response['productList']:
-                if len(i['name']) <= 15:
-                    shortButtons.append(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
-                else:
-                    markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+            ac = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+            response = ac.subscribedProducts()
             
-            markup.add(*shortButtons)
-            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+            #! Success
+            if response.responseDescCode == 'BIL2000':
+                #! Set status success for use in callback handler
+                Response = {'status': 'success'}
+                Response['productList'] = response.content['queryAllProductsResponse']['productList']
+
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
+
+                shortButtons =  []
+                for i in Response['productList']:
+                    if len(i['name']) <= 15:
+                        shortButtons.append(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+                    else:
+                        markup.add(telebot.types.InlineKeyboardButton(i['name'], callback_data=f"cb_subscribedProductInfo:{i['id']}"))
+                
+                markup.add(*shortButtons)
+                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+                
+                return markup
             
-            return markup
-        
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            Response = response.responseHeader
-            Response['status'] = response.responseDescCode
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                Response = response.responseHeader
+                Response['status'] = response.responseDescCode
 
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
 
-            return response.responseDescCode
+                return response.responseDescCode
+            
+            #! Unknown error
+            else:
+                Response = response.responseHeader
+                Response['status'] = 'error'
+                Response['statusCode'] = response.statusCode
+                
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
+
+                return 'unknownError'
         
-        #! Unknown error
+        #! Error in encryption passphrase
         else:
-            Response = response.responseHeader
-            Response['status'] = 'error'
-            Response['statusCode'] = response.statusCode
-            
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
-
-            return 'unknownError'
+            return 'passphraseError'
 
     else:
         return None
@@ -744,61 +841,68 @@ def genMarkup_products(message):
     account = dbSql.getDefaultAc(userId)
 
     if accounts:
-        planType = message.data.split(':')[1]
-        catagoryId = message.data.split(':')[2]
-
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.one_time_keyboard=True
-        markup.row_width = 2
-
-        ac = ncellapp.ncell(account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-
-        if planType == 'data':
-            response = ac.dataPlans(catagoryId)
-        elif planType == 'voice':
-            response = ac.voiceAndSmsPlans(catagoryId)
-        elif planType == 'vas':
-            response = ac.vasPlans(catagoryId)
-
-        #! Success
-        if response.responseDescCode == 'QAP1000':
-            Response = {'status':'success'}
-            Response['availablePackages'] = response.content['availablePackages']
-            
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
-
-            for item in Response['availablePackages']:
-                productName = item['displayInfo']['displayName'].replace('Facebook','FB').replace('YouTube','YT').replace('TikTok','TT')
-                price = item['productOfferingPrice']['price'].split('.')[0]
-                productName += f" (Rs. {price})"
-
-                markup.add(telebot.types.InlineKeyboardButton(text=productName, callback_data=f"cb_productInfo:{item['id']}:{planType}:{catagoryId}"))
-
-            markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_dataPlans' if planType=='data' else 'cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
-            
-            return markup
+        token = decryptIf(message, account[1])
         
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            Response = response.responseHeader
-            Response['status'] = response.responseDescCode
+        if token:
+            planType = message.data.split(':')[1]
+            catagoryId = message.data.split(':')[2]
 
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+            markup.row_width = 2
 
-            return response.responseDescCode
+            ac = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+
+            if planType == 'data':
+                response = ac.dataPlans(catagoryId)
+            elif planType == 'voice':
+                response = ac.voiceAndSmsPlans(catagoryId)
+            elif planType == 'vas':
+                response = ac.vasPlans(catagoryId)
+
+            #! Success
+            if response.responseDescCode == 'QAP1000':
+                Response = {'status':'success'}
+                Response['availablePackages'] = response.content['availablePackages']
+                
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
+
+                for item in Response['availablePackages']:
+                    productName = item['displayInfo']['displayName'].replace('Facebook','FB').replace('YouTube','YT').replace('TikTok','TT')
+                    price = item['productOfferingPrice']['price'].split('.')[0]
+                    productName += f" (Rs. {price})"
+
+                    markup.add(telebot.types.InlineKeyboardButton(text=productName, callback_data=f"cb_productInfo:{item['id']}:{planType}:{catagoryId}"))
+
+                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_dataPlans' if planType=='data' else 'cb_backToPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+                
+                return markup
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                Response = response.responseHeader
+                Response['status'] = response.responseDescCode
+
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
+
+                return response.responseDescCode
+            
+            #! Unknown error
+            else:
+                Response = response.responseHeader
+                Response['status'] = 'error'
+                Response['statusCode'] = response.statusCode
+                
+                responseData = base64.b64encode(str(Response).encode()).decode()
+                dbSql.setTempdata(userId, 'responseData', responseData)
+
+                return 'unknownError'
         
-        #! Unknown error
+        #! Error in encryption passphrase
         else:
-            Response = response.responseHeader
-            Response['status'] = 'error'
-            Response['statusCode'] = response.statusCode
-            
-            responseData = base64.b64encode(str(Response).encode()).decode()
-            dbSql.setTempdata(userId, 'responseData', responseData)
-
-            return 'unknownError'
+            return 'passphraseError'
     else:
         return None
         
@@ -876,35 +980,45 @@ def sendFreeSms2(message):
                 userId = dbSql.getUserId(message.from_user.id)
                 msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
                 account = dbSql.getDefaultAc(userId)
-                acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
-                response = acc.sendFreeSms(msisdn, message.text)
+                token = decryptIf(message, account[1])
 
-                if response.responseDescCode == 'SMS1000':
-                    #! SMS sent successfully
-                    if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                        bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
-                        dbSql.setTempdata(userId, 'sendSmsTo', None)
+                if token:
+                    acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
-                    #! Daily 10 free SMS exceed
-                    elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
-                        bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
+                    response = acc.sendFreeSms(msisdn, message.text)
+
+                    if response.responseDescCode == 'SMS1000':
+                        #! SMS sent successfully
+                        if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                            bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                            dbSql.setTempdata(userId, 'sendSmsTo', None)
+
+                        #! Daily 10 free SMS exceed
+                        elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
+                            bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
+                        
+                        #! Error sending SMS to off net numbers
+                        elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                            bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+                        
+                        #! Unknown error
+                        else:
+                            bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
+                        
+                    #! Invalid refresh token
+                    elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                        invalidRefreshTokenHandler(message, userId, response.responseDescCode)
                     
-                    #! Error sending SMS to off net numbers
-                    elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
-                        bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
-                    
-                    #! Unknown error
+                    #: Unknown error
                     else:
-                        bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
-                    
-                #! Invalid refresh token
-                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                        unknownErrorHandler(message, response.responseDesc, response.statusCode)
                 
-                #: Unknown error
+                #! Error in encryption passphrase
                 else:
-                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                    state = dbSql.getTempdata(userId, 'passphraseState')
+                    passphraseErrorHandler(message, state, called=False)
+            
             else:
                 sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
                 bot.register_next_step_handler(sent, sendFreeSms2)
@@ -943,34 +1057,43 @@ def sendPaidSms2(message):
             msisdn = dbSql.getTempdata(userId, 'sendSmsTo')
 
             account = dbSql.getDefaultAc(userId)
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            
-            response = acc.sendSms(msisdn, message.text)
-            if response.responseDescCode == 'SMS1000':
-                #! SMS sent successfully
-                if response.content['sendFreeSMSResponse']['statusCode'] == '0':
-                    bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
-                    dbSql.setTempdata(userId, 'sendSmsTo', None)
 
-                #! Error no sufficient balance
-                elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
-                    bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
+            token = decryptIf(message, account[1])
+            
+            if token:
+                acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
                 
-                #! Error sending SMS to off net numbers
-                elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
-                    bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+                response = acc.sendSms(msisdn, message.text)
+                if response.responseDescCode == 'SMS1000':
+                    #! SMS sent successfully
+                    if response.content['sendFreeSMSResponse']['statusCode'] == '0':
+                        bot.send_message(message.from_user.id, language['smsSentSuccessfully']['en'].format(message.text, msisdn), reply_markup=mainReplyKeyboard(message))
+                        dbSql.setTempdata(userId, 'sendSmsTo', None)
+
+                    #! Error no sufficient balance
+                    elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
+                        bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                    #! Error sending SMS to off net numbers
+                    elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
+                        bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                    #! Unknown error
+                    else:
+                        bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
                 
                 #! Unknown error
                 else:
-                    bot.send_message(message.from_user.id, language['smsError']['en'], reply_markup=mainReplyKeyboard(message))
-                
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Unknown error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
         else:
             sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
             bot.register_next_step_handler(sent, sendPaidSms2)
@@ -1045,29 +1168,36 @@ def selfPinRecharge(message):
             userId = dbSql.getUserId(message.from_user.id)
             account = dbSql.getDefaultAc(userId)
 
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            response = acc.selfRecharge(message.text)
+            token = decryptIf(message, account[1])
+            if token:
+                acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                response = acc.selfRecharge(message.text)
 
-            #! Recharge success
-            if 'isRechargeSuccess' in response.content and response.content['isRechargeSuccess'] == True:
-                bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
-            
-            #! Incorrect recharge pin
-            elif response.responseDescCode == 'MRG2001':
-                sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
-                bot.register_next_step_handler(sent, selfPinRecharge)
+                #! Recharge success
+                if 'isRechargeSuccess' in response.content and response.content['isRechargeSuccess'] == True:
+                    bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+                
+                #! Incorrect recharge pin
+                elif response.responseDescCode == 'MRG2001':
+                    sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+                    bot.register_next_step_handler(sent, selfPinRecharge)
 
-            #! User black Listed
-            elif response.responseDescCode == 'MRG2000':
-                bot.send_message(message.from_user.id, language['rechargeBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+                #! User black Listed
+                elif response.responseDescCode == 'MRG2000':
+                    bot.send_message(message.from_user.id, language['rechargeBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
+                #! Unknown error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-            
-            #! Unknown error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
         
         else:
             sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
@@ -1100,21 +1230,29 @@ def selfOnlineRecharge(message):
             userId = dbSql.getUserId(message.from_user.id)
         
             account = dbSql.getDefaultAc(userId)
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            
-            response = acc.onlineRecharge(message.text)
 
-            #! Success
-            if response.responseDescCode == 'OPS1000':
-                bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+            token = decryptIf(message, account[1])
+            if token:
+                acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                
+                response = acc.onlineRecharge(message.text)
+
+                #! Success
+                if response.responseDescCode == 'OPS1000':
+                    bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
+                #! Unknown error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-            
-            #! Unknown error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
 
 #: Recharge others with pin
 def rechargeOthersPin(message):
@@ -1158,36 +1296,45 @@ def rechargeOthersPin2(message):
             userId = dbSql.getUserId(message.from_user.id)
             msisdn = dbSql.getTempdata(userId, 'rechargeTo')
             account = dbSql.getDefaultAc(userId)
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            
-            response = acc.recharge(msisdn, message.text)
 
-            if 'isRechargeSuccess' in response.content:
-                #! Success
-                if response.content['isRechargeSuccess']:
-                    bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+            token = decryptIf(message, account[1])
+            if token:
+                acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
                 
-                #? For recharge others, ncell response with same responsecode. So, compairing with description.
-                # FIX THIS NCELL :))
-                elif response.responseDesc == 'MSISDN does not exist.':
-                    sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
-                    bot.register_next_step_handler(sent, rechargeOthersPin)
-                elif response.responseDesc == 'The user is in black list.':
-                    bot.send_message(message.from_user.id, language['rechargeOBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
-                elif response.responseDesc == 'the password cannot be found in online vc':
-                    sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
-                    bot.register_next_step_handler(sent, rechargeOthersPin2)
+                response = acc.recharge(msisdn, message.text)
+
+                if 'isRechargeSuccess' in response.content:
+                    #! Success
+                    if response.content['isRechargeSuccess']:
+                        bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+                    
+                    #? For recharge others, ncell response with same responsecode. So, compairing with description.
+                    # FIX THIS NCELL :))
+                    elif response.responseDesc == 'MSISDN does not exist.':
+                        sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+                        bot.register_next_step_handler(sent, rechargeOthersPin)
+                    elif response.responseDesc == 'The user is in black list.':
+                        bot.send_message(message.from_user.id, language['rechargeOBlackListed']['en'], reply_markup=mainReplyKeyboard(message))
+                    elif response.responseDesc == 'the password cannot be found in online vc':
+                        sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
+                        bot.register_next_step_handler(sent, rechargeOthersPin2)
+                    #! Unknown error
+                    else:
+                        unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
                 #! Unknown error
                 else:
                     unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-            
-            #! Unknown error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
+        
         else:
             sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
             bot.register_next_step_handler(sent, rechargeOthersPin2)
@@ -1243,26 +1390,33 @@ def rechargeOthersOnline2(message):
             msisdn = dbSql.getTempdata(userId, 'rechargeTo')
             
             account = dbSql.getDefaultAc(userId)
-            acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-            
-            response = acc.onlineRecharge(message.text, msisdn)
+            token = decryptIf(message, account[1])
+            if token:
+                acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                
+                response = acc.onlineRecharge(message.text, msisdn)
 
-            #! Success
-            if response.responseDescCode == 'OPS1000':
-                bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+                #! Success
+                if response.responseDescCode == 'OPS1000':
+                    bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
+                
+                #! Invalid number
+                elif response.responseDescCode in ['OPS2104', 'OPS2003']:
+                    sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
+                    bot.register_next_step_handler(sent, rechargeOthersOnline)
+                
+                #! Invalid refresh token
+                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                
+                #! Unknown error
+                else:
+                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
             
-            #! Invalid number
-            elif response.responseDescCode in ['OPS2104', 'OPS2003']:
-                sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
-                bot.register_next_step_handler(sent, rechargeOthersOnline)
-            
-            #! Invalid refresh token
-            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-            
-            #! Unknown error
+            #! Error in encryption passphrase
             else:
-                unknownErrorHandler(message, response.responseDesc, response.statusCode)
+                state = dbSql.getTempdata(userId, 'passphraseState')
+                passphraseErrorHandler(message, state, called=False)
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -1398,26 +1552,33 @@ def callback_query(call):
         userId = dbSql.getUserId(call.from_user.id)
 
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
-        response = acc.takeLoan()
-        
-        #! Loan success
-        if response.responseDescCode == 'CL1003':
-            bot.answer_callback_query(call.id, language['loanGranted']['en'], show_alert=True)
-        
-        #! Loan failled
-        elif response.responseDescCode == 'CL3001':
-            bot.answer_callback_query(call.id, language['loanFailled']['en'], show_alert=True)
-        
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
-        
-        #! Unknown error
+        token = decryptIf(call, account[1])
+
+        if token:
+            acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+
+            response = acc.takeLoan()
+            
+            #! Loan success
+            if response.responseDescCode == 'CL1003':
+                bot.answer_callback_query(call.id, language['loanGranted']['en'], show_alert=True)
+            
+            #! Loan failled
+            elif response.responseDescCode == 'CL3001':
+                bot.answer_callback_query(call.id, language['loanFailled']['en'], show_alert=True)
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
-        
+            state = dbSql.getTempdata(userId, 'passphraseState')
+            passphraseErrorHandler(call, state, called=True)
+    
     #! Back to balance
     elif call.data == 'cb_backToBalance':
         balance(message=call, called=True)
@@ -1437,8 +1598,13 @@ def callback_query(call):
         markup = genMarkup_subscribedPlans(call)
         userId = dbSql.getUserId(call.from_user.id)
 
-        #!? First check if the markup contains error or not 
-        if markup in [ 'LGN2003', 'LGN2004']:
+        #! Check for passphrase errors
+        if markup == 'passphraseError':
+            state = dbSql.getTempdata(userId, 'passphraseState')
+            passphraseErrorHandler(call, state, called=True)
+
+        #! Check if the markup contains error or not 
+        elif markup in [ 'LGN2003', 'LGN2004']:
             invalidRefreshTokenHandler_cb(call, userId, responseCode=markup)
                 
         elif markup == 'unknownError':
@@ -1449,7 +1615,7 @@ def callback_query(call):
             response = ast.literal_eval(decodedResponse)
             unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
         
-        #!? If no error, send reply markup
+        #! If no error, send reply markup
         else:
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['subscribedPlans']['en'] if markup else language['noAccounts']['en'], reply_markup=markup)
 
@@ -1503,7 +1669,12 @@ def callback_query(call):
     elif call.data[:8] == 'cb_plans':
         markup = genMarkup_products(call)
         userId = dbSql.getUserId(call.from_user.id)
-        if markup in [ 'LGN2003', 'LGN2004']:
+
+        if markup == 'passphraseError':
+            state = dbSql.getTempdata(userId, 'passphraseState')
+            passphraseErrorHandler(call, state, called=True)
+
+        elif markup in [ 'LGN2003', 'LGN2004']:
             invalidRefreshTokenHandler_cb(call, userId, responseCode=markup)
                 
         elif markup == 'unknownError':
@@ -1580,56 +1751,67 @@ def callback_query(call):
     #: Deactivate product
     elif call.data[:17] == 'cb_deactivatePlan':
         subscriptionCode = call.data[18:]
+        
         userId = dbSql.getUserId(call.from_user.id)
-
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+        token = decryptIf(call, account[1])
 
-        response = acc.unsubscribeProduct(subscriptionCode)
+        if token:
+            acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
-        #! Success
-        if response.responseDescCode == 'BIL1001':
-            bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
-        
-        #! Product already deactivated
-        elif response.responseDescCode == 'PSU2004':
-            bot.answer_callback_query(call.id, language['alreadyDeactivated']['en'], show_alert=True)
-        
-        #! Product already deactivated
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
-        
-        #! Unknown error
+            response = acc.unsubscribeProduct(subscriptionCode)
+
+            #! Success
+            if response.responseDescCode == 'BIL1001':
+                bot.answer_callback_query(call.id, language['deactivationSuccessful']['en'], show_alert=True)
+            
+            #! Product already deactivated
+            elif response.responseDescCode == 'PSU2004':
+                bot.answer_callback_query(call.id, language['alreadyDeactivated']['en'], show_alert=True)
+            
+            #! Product already deactivated
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
+            state = dbSql.getTempdata(userId, 'passphraseState')
+            passphraseErrorHandler(call, state, called=True)
 
     #: Activate product
     elif call.data[:15] == 'cb_activatePlan':
         subscriptionCode = call.data[16:]
 
         userId = dbSql.getUserId(call.from_user.id)
-
         account = dbSql.getDefaultAc(userId)
-        acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+        token = decryptIf(message, account[1])
 
-        response = acc.subscribeProduct(subscriptionCode)
+        if token:
+            acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
 
-        #! Success
-        if response.responseDescCode == 'BIL1000':
-            bot.answer_callback_query(call.id, language['activationSuccessful']['en'], show_alert=True)
+            response = acc.subscribeProduct(subscriptionCode)
 
-        #! Product already activated
-        if response.responseDescCode == 'PSU2003':
-            bot.answer_callback_query(call.id, language['alreadyActivated']['en'], show_alert=True)
-        
-        #! Invalid refresh token
-        elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
-        
-        #! Unknown error
+            #! Success
+            if response.responseDescCode == 'BIL1000':
+                bot.answer_callback_query(call.id, language['activationSuccessful']['en'], show_alert=True)
+
+            #! Product already activated
+            if response.responseDescCode == 'PSU2003':
+                bot.answer_callback_query(call.id, language['alreadyActivated']['en'], show_alert=True)
+            
+            #! Invalid refresh token
+            elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler_cb(call, userId, response.responseDescCode)
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
-
+            state = dbSql.getTempdata(userId, 'passphraseState')
+            passphraseErrorHandler(call, state, called=True)
+    
     #! Go back to plan catagory
     elif call.data == 'cb_backToPlans':
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['selectPlanType']['en'], reply_markup=genMarkup_plans(call) )
