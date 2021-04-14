@@ -239,6 +239,16 @@ def encryptionSetup(message):
         PassphraseHash = mycrypto.genHash(message.text)
         privateKey, publicKey = mycrypto.generateKeys(key)
 
+        userId = dbSql.getUserId(message.from_user.id)
+        accounts = dbSql.getAccounts(userId)
+
+        #! Encrypt the existing accounts
+        for account in accounts:
+            accountId = account[0]
+            encryptedToken = mycrypto.encrypt(account[1], publicKey)
+
+            dbSql.updateAccount(userId, accountId, encryptedToken)
+
         dbSql.setSetting(userId, 'privateKey', privateKey)
         dbSql.setSetting(userId, 'publicKey', publicKey)
         dbSql.setSetting(userId, 'PassphraseHash', PassphraseHash)
@@ -310,7 +320,16 @@ def encryptionRemove(message):
     
     elif message.text == 'CONFIRM':
         userId = dbSql.getUserId(message.from_user.id)
-        dbSql.deleteAccounts(userId)
+        
+        accounts = dbSql.getAccounts(userId)
+
+        for account in accounts:
+            accountId = account[0]
+            encryptedToken = account[1]
+
+            token = decryptIf(message, encryptedToken)
+            dbSql.updateAccount(userId, accountId, token)
+
         dbSql.setSetting(userId, 'isEncrypted', None)
         dbSql.setSetting(userId, 'privateKey', None)
         dbSql.setSetting(userId, 'publicKey', None)
@@ -1483,9 +1502,13 @@ def callback_query(call):
     
     #! Encryption remove
     elif call.data == 'cb_encryptionRemove':
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, encryptionRemove)
+        userId= dbSql.getUserId(call.from_user.id)
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+            sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, encryptionRemove)
+        else:
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['passphraseNotPinned']['en'])
 
     #! Change encryption passphrase
     elif call.data == 'cb_changePassphrase':
