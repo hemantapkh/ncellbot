@@ -253,27 +253,12 @@ def encryptionSetup(message):
         dbSql.setSetting(userId, 'publicKey', publicKey)
         dbSql.setSetting(userId, 'PassphraseHash', PassphraseHash)
         dbSql.setSetting(userId, 'isEncrypted', True)
+        dbSql.setSetting(userId, 'isUnlocked', None)
 
         bot.send_message(message.from_user.id, text=language['encryptionSuccess']['en'], reply_markup=mainReplyKeyboard(message))
 
 #: Change encryption passphrase
 def changePassphrase(message):
-    userId = dbSql.getUserId(message.from_user.id)
-
-    if message.text == '❌ Cancel':
-        cancelKeyboardHandler(message)
-    
-    #! If the passphrase hash match the message text
-    elif mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
-        dbSql.setTempdata(userId, 'oldPassphrase', message.text)
-        sent = bot.send_message(message.from_user.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, changePassphrase2)
-    
-    else:
-        sent = bot.send_message(message.from_user.id, text=language['incorrectPassphrase']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, changePassphrase)
-
-def changePassphrase2(message):
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     
@@ -283,51 +268,49 @@ def changePassphrase2(message):
 
     else:
         userId = dbSql.getUserId(message.from_user.id)
-        oldPassphrase = dbSql.getTempdata(userId, 'oldPassphrase')
+        oldPassphrase = pinnedText(message)[0]
 
-        #! If new passphrase is same as old passphrase
-        if message.text == oldPassphrase:
-            sent = bot.send_message(message.from_user.id, text=language['samePassphrase']['en'], reply_markup=cancelReplyKeyboard())
-            bot.register_next_step_handler(sent, changePassphrase2)
-        
-        else:
-            #! If the length of the passphrase is smaller than 16, add '0' to make 16 digit passphrase
-            extraPassphrase = '0'*(16-len(message.text))
-            key = message.text + extraPassphrase
-
-            #! Decrypt the privatekey
-            encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
-            oldExtraPassphrase = '0'*(16-len(oldPassphrase))
-            aes = mycrypto.AESCipher(oldPassphrase + (oldExtraPassphrase if oldExtraPassphrase else ''))
-
-            privateKey = aes.decrypt(encryptedPrivateKey)
-
-            #! Encrypt the private key with the new passphrase
-            aes = mycrypto.AESCipher(key)
-            encryptedPrivateKey = aes.encrypt(privateKey)
+        if mycrypto.genHash(oldPassphrase) == dbSql.getSetting(userId, 'passphraseHash'):
+            #! If new passphrase is same as old passphrase
+            if message.text == oldPassphrase:
+                sent = bot.send_message(message.from_user.id, text=language['samePassphrase']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, changePassphrase2)
             
-            dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
-            dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
-            dbSql.setSetting(userId, 'isUnlocked', None)
+            else:
+                #! Decrypt the privatekey
+                encryptedPrivateKey = dbSql.getSetting(userId, 'privateKey')
+                aes = mycrypto.AESCipher(oldPassphrase + '0'*(16-len(oldPassphrase)))
 
-            bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
-            bot.unpin_all_chat_messages(message.from_user.id)
+                privateKey = aes.decrypt(encryptedPrivateKey)
+
+                #! Encrypt the private key with the new passphrase
+                aes = mycrypto.AESCipher(message.text + '0'*(16-len(message.text)))
+                encryptedPrivateKey = aes.encrypt(privateKey)
+                
+                dbSql.setSetting(userId, 'privateKey', encryptedPrivateKey)
+                dbSql.setSetting(userId, 'passphraseHash', mycrypto.genHash(message.text))
+                dbSql.setSetting(userId, 'isUnlocked', None)
+
+                bot.send_message(message.from_user.id, text=language['passphraseChangeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+                bot.unpin_all_chat_messages(message.from_user.id)
+        else:
+            bot.send_message(message.from_user.id, text=language['accountIsLocked']['en'], reply_markup=mainReplyKeyboard(message))
 
 #: Remove encryption
 def encryptionRemove(message):
+    userId = dbSql.getUserId(message.from_user.id)
     if message.text == '❌ Cancel':
         cancelKeyboardHandler(message)
     
-    elif message.text == 'CONFIRM':
-        userId = dbSql.getUserId(message.from_user.id)
-        
+    elif mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
         accounts = dbSql.getAccounts(userId)
 
         for account in accounts:
             accountId = account[0]
             encryptedToken = account[1]
+            privateKey = dbSql.getSetting(userId, 'privateKey')
 
-            token = decryptIf(message, encryptedToken)
+            token = mycrypto.decrypt(encryptedToken, privateKey, passphrase=message.text+'0'*(16-len(message.text)))
             dbSql.updateAccount(userId, accountId, token)
 
         dbSql.setSetting(userId, 'isEncrypted', None)
@@ -336,9 +319,10 @@ def encryptionRemove(message):
         dbSql.setSetting(userId, 'passphraseHash', None)
 
         bot.send_message(message.from_user.id, text=language['encryptionRemoved']['en'], reply_markup=mainReplyKeyboard(message))
+        bot.unpin_all_chat_messages(message.from_user.id)
     
     else:
-        sent = bot.send_message(message.from_user.id, text=language['encryptionRemoveInvalid']['en'], reply_markup=cancelReplyKeyboard())
+        sent = bot.send_message(message.from_user.id, text=language['incorrectPassphrase']['en'], reply_markup=cancelReplyKeyboard())
         bot.register_next_step_handler(sent, encryptionRemove)
 
 #: Encrypt if encryption is on
@@ -1502,19 +1486,19 @@ def callback_query(call):
     
     #! Encryption remove
     elif call.data == 'cb_encryptionRemove':
-        userId= dbSql.getUserId(call.from_user.id)
-        if dbSql.getSetting(userId, 'isUnlocked'):
-            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-            sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
-            bot.register_next_step_handler(sent, encryptionRemove)
-        else:
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['passphraseNotPinned']['en'])
+        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
+        bot.register_next_step_handler(sent, encryptionRemove)
 
     #! Change encryption passphrase
     elif call.data == 'cb_changePassphrase':
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterCurrentPassphrase']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, changePassphrase)
+        userId = dbSql.getUserId(call.from_user.id)
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+            sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterCurrentPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, changePassphrase)
+        else:
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accountIsLocked']['en'])
 
    #! Select action for /accounts     
     elif call.data == 'cb_selectAccount':
