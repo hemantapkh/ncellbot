@@ -239,11 +239,12 @@ def encryptionSetup(message):
         accounts = dbSql.getAccounts(userId)
 
         #! Encrypt existing accounts
-        for account in accounts:
-            accountId = account[0]
-            encryptedToken = mycrypto.encrypt(account[1], publicKey)
+        if accounts:
+            for account in accounts:
+                accountId = account[0]
+                encryptedToken = mycrypto.encrypt(account[1], publicKey)
 
-            dbSql.updateAccount(userId, accountId, encryptedToken)
+                dbSql.updateAccount(userId, accountId, encryptedToken)
 
         dbSql.setSetting(userId, 'privateKey', privateKey)
         dbSql.setSetting(userId, 'publicKey', publicKey)
@@ -301,13 +302,14 @@ def encryptionRemove(message):
     elif mycrypto.genHash(message.text) == dbSql.getSetting(userId, 'passphraseHash'):
         accounts = dbSql.getAccounts(userId)
 
-        for account in accounts:
-            accountId = account[0]
-            encryptedToken = account[1]
-            privateKey = dbSql.getSetting(userId, 'privateKey')
+        if accounts:
+            for account in accounts:
+                accountId = account[0]
+                encryptedToken = account[1]
+                privateKey = dbSql.getSetting(userId, 'privateKey')
 
-            token = mycrypto.decrypt(encryptedToken, privateKey, passphrase=message.text+'0'*(16-len(message.text)))
-            dbSql.updateAccount(userId, accountId, token)
+                token = mycrypto.decrypt(encryptedToken, privateKey, passphrase=message.text+'0'*(16-len(message.text)))
+                dbSql.updateAccount(userId, accountId, token)
 
         dbSql.setSetting(userId, 'isEncrypted', None)
         dbSql.setSetting(userId, 'privateKey', None)
