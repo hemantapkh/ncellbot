@@ -74,6 +74,81 @@
         "np": null
     },
 
+    "encryption": {
+        "en": "🔐 <b>Encryption</b>\n\nAre you a paranoid? You can encrypt your accounts so that your tokens are stored encrypted in the database.",
+        "np": null
+    },
+
+    "encryptionPasspharse": {
+        "en": "🔑 Enter a passpharse to encrypt your private key.",
+        "np": null
+    },
+
+    "invalidPasspharse": {
+        "en": "⚠️ Please enter a Passpharse between 8 to 16 characters.",
+        "np": null
+    },
+
+    "encryptionSuccess": {
+        "en": "🔐 <b>Encryption Success</b>\n\nAll your existing accounts as well as new accounts will be encrypted with 1024 bit RSA algorithm.",
+        "np": null
+    },
+
+    "encryptionRemove": {
+        "en": "🔓 Are you sure want to remove the encryption? Please enter your encryption passphrase to confirm.",
+        "np": null
+    },
+
+    "enterPassphrase": {
+        "en": "🔑 Enter your encryption passphrase to unlock.",
+        "np": null
+    },
+
+    "enterCurrentPassphrase": {
+        "en": "🔑 Enter your current encryption passphrase.",
+        "np": null
+    },
+
+    "enterNewPassphrase": {
+        "en": "🔑 Enter a new encryption passphrase.",
+        "np": null
+    },
+
+    "passphraseChangeSuccess": {
+        "en": "🔐 <b>Encryption Passphrase Changed</b>\n\nYour encryption passphrase for the private key has been changed.\n\n<b>This only changes the encryption passphrase for your private key. If you want to change the private and public key pair, please remove the encryption and set it again.</b>",
+        "np": null
+    },
+
+    "incorrectPassphrase": {
+        "en": "⚠️ Incorrect passphrase. Please enter the correct passphrase.",
+        "np": null
+    },
+
+    "samePassphrase": {
+        "en": "⚠️ New passphrase can't be old one. Please enter a new passphrase.",
+        "np": null
+    },
+
+    "encryptionRemoved": {
+        "en": "🔓 Encryption for your account is removed successfully. Any existing accounts and new ones will be stored unencrypted in the database.",
+        "np": null
+    },
+
+    "accountIsLocked": {
+        "en": "🔒 Your account is encrypted. Please unlock your account first.",
+        "np": null
+    },
+
+    "lockedSuccessfully": {
+        "en": "<b>🔒 All your accounts is locked and can only be unlocked with your encryption passphrase.</b>",
+        "np": null
+    },
+
+    "unlockedSuccessfully": {
+        "en": "🔓 Your accounts is unlocked.",
+        "np": null
+    },
+
     "noAccounts": {
         "en": "⚠️ You do not have any account registered. Use /register to register your number.",
         "np": null

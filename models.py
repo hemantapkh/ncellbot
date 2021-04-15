@@ -1,5 +1,4 @@
 import sqlite3
-import hashlib
 
 class dbQuery():
     def __init__(self, db):
@@ -87,6 +86,16 @@ class dbQuery():
                 #!? If no account left, make the default account NULL
                 else:
                     self.setSetting(userId, 'defaultAcId', None)
+   
+    #: Delete all user's account
+    def deleteAccounts(self, userId):
+        with sqlite3.connect(self.db) as con:
+            cur = con.cursor()
+            cur.execute(f'DELETE FROM accounts WHERE ownerId={userId}')
+            con.commit()
+
+            #!? Make the default account NULL
+            self.setSetting(userId, 'defaultAcId', None)
                 
     #: Get the default account of the user
     def getDefaultAc(self, userId):
@@ -150,9 +159,3 @@ class dbQuery():
             cur.execute(f'INSERT OR IGNORE INTO tempdata (ownerId, {var}) VALUES ({userId}, {value})')
             cur.execute(f'UPDATE tempdata SET {var}={value} WHERE ownerId={userId}')
             con.commit()
-
-#: Generate SHA Hash of a string
-def genHash(string):
-	result = hashlib.sha512(str(string).encode()) 
-	  
-	return result.hexdigest()
