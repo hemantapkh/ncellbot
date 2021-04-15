@@ -135,7 +135,7 @@
     },
 
     "accountIsLocked": {
-        "en": "🔒 Your account is encrypted. Please unlock your account first.",
+        "en": "🔒 Your account is encrypted. Please /unlock your account first.",
         "np": null
     },
 

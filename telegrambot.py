@@ -1494,25 +1494,36 @@ def callback_query(call):
 
     #! Encryption setup
     elif call.data == 'cb_encryptionSetup':
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionPasspharse']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, encryptionSetup)
+        userId = dbSql.getUserId(call.from_user.id)
+        if not dbSql.getSetting(userId, 'isEncrypted'):
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+            sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionPasspharse']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, encryptionSetup)
+        else:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
     
     #! Encryption remove
     elif call.data == 'cb_encryptionRemove':
-        bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
-        bot.register_next_step_handler(sent, encryptionRemove)
+        userId = dbSql.getUserId(call.from_user.id)
+        if dbSql.getSetting(userId, 'isEncrypted'):
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+            sent = bot.send_message(chat_id=call.message.chat.id, text=language['encryptionRemove']['en'], reply_markup=cancelReplyKeyboard())
+            bot.register_next_step_handler(sent, encryptionRemove)
+        else:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
 
     #! Change encryption passphrase
     elif call.data == 'cb_changePassphrase':
         userId = dbSql.getUserId(call.from_user.id)
-        if dbSql.getSetting(userId, 'isUnlocked'):
-            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-            sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
-            bot.register_next_step_handler(sent, changePassphrase)
+        if dbSql.getSetting(userId, 'isEncrypted'):
+            if dbSql.getSetting(userId, 'isUnlocked'):
+                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+                sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, changePassphrase)
+            else:
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accountIsLocked']['en'])
         else:
-            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accountIsLocked']['en'])
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
 
    #! Select action for /accounts     
     elif call.data == 'cb_selectAccount':
@@ -1608,14 +1619,11 @@ def callback_query(call):
     #! Take loan
     elif call.data == 'cb_takeLoan':
         userId = dbSql.getUserId(call.from_user.id)
-
         account = dbSql.getDefaultAc(userId)
-
         token = decryptIf(call, account[1])
 
         if token:
             acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-
             response = acc.takeLoan()
             
             #! Loan success
