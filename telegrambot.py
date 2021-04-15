@@ -119,7 +119,8 @@ def mainReplyKeyboard(message):
             keyboard.row(button9, button1)
             keyboard.row(button4, button5, button6)
             keyboard.row(button6, button7, button13)
-            #!? LOck and unlock buttons for encrypted users
+            
+            #!? Lock and unlock buttons for encrypted users
             if dbSql.getSetting(userId, 'isEncrypted'):
                 isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
                 keyboard.row(button10, button14 if isUnlocked else button15, button11)
@@ -129,6 +130,7 @@ def mainReplyKeyboard(message):
             #!? Only one account
             keyboard.row(button4, button5, button1)
             keyboard.row(button6, button7, button8)
+            
             if dbSql.getSetting(userId, 'isEncrypted'):
                 isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
                 keyboard.row(button10, button14 if isUnlocked else button15, button11)
@@ -168,18 +170,15 @@ def unknownErrorHandler_cb(call, description, statusCode):
 def unknownErrorHandler(message, description, statusCode):
     bot.send_message(message.from_user.id, text=language['unknwonError']['en'].format(description, statusCode), reply_markup=mainReplyKeyboard(message))
 
-#: Passphrase error handler
-def passphraseErrorHandler(message, state, called):
-    if state == 'NONE':
-        if called:
-            bot.answer_callback_query(message.id, text=language['passphraseNotPinned']['en'], show_alert=True)
-        else:
-            bot.send_message(message.from_user.id, text=language['passphraseNotPinned']['en'])
+#: Locked account handler
+def lockedAccountHandler(message, called):
+    if called:
+        bot.answer_callback_query(message.id, text=language['accountIsLocked']['en'], show_alert=True)
     else:
-        if called:
-            bot.answer_callback_query(message.id, text=language['pinnedPassphraseIncorrect']['en'], show_alert=True)
-        else:
-            bot.send_message(message.from_user.id, text=language['pinnedPassphraseIncorrect']['en'])
+        bot.send_message(message.from_user.id, text=language['accountIsLocked']['en'])
+    
+    dbSql.setSetting(userId, 'isUnlocked', None)
+    bot.unpin_all_chat_messages(message.from_user.id)
 
 #: Updating the token in database after refreshing
 def autoRefreshToken(userId, token):
@@ -201,7 +200,7 @@ def start(message):
 #! Ping pong
 @bot.message_handler(commands=['ping'])
 def ping(message):
-    bot.send_message(message.from_user.id, text=language['ping']['en'], reply_markup=mainReplyKeyboard(message))
+    bot.send_message(message.from_user.id, text=language['ping']['en'])
 
 #! Encryption
 @bot.message_handler(commands=['encryption'])
@@ -242,7 +241,7 @@ def encryptionSetup(message):
         userId = dbSql.getUserId(message.from_user.id)
         accounts = dbSql.getAccounts(userId)
 
-        #! Encrypt the existing accounts
+        #! Encrypt existing accounts
         for account in accounts:
             accountId = account[0]
             encryptedToken = mycrypto.encrypt(account[1], publicKey)
@@ -349,18 +348,7 @@ def decryptIf(message, text):
                 privateKey = dbSql.getSetting(userId, 'privateKey')
                 decryptedText = mycrypto.decrypt(text, privateKey, passphrase + '0'*(16-len(passphrase)))
 
-                return decryptedText
-            
-            #! Pinned passphrase incorrect
-            else:
-                bot.unpin_chat_message(message.from_user.id, message_id=pinned[1])
-                dbSql.setTempdata(userId, 'passphraseState', 'INVALID')
-        
-        #! No pinned message
-        else:
-            bot.unpin_all_chat_messages(message.from_user.id)
-            dbSql.setTempdata(userId, 'passphraseState', 'NONE')
-        
+                return decryptedText  
     else:
         return text
 
@@ -613,34 +601,35 @@ def balance(message, called=False):
         account = dbSql.getDefaultAc(userId)
         
         if account:
-            token = decryptIf(message, account[1])
-            if token:
-                acc = ncellapp.ncell(token=token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
-                response = acc.viewBalance()
-                
-                #! Success
-                if response.responseDescCode == 'BAL1000':
-                    balanceFormat(message, response.content['queryBalanceResponse'], called)
-                
-                #! Invalid refresh token
-                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                    if called:
-                        invalidRefreshTokenHandler_cb(message, userId, response.responseDescCode)
+            if dbSql.getSetting(userId, 'isUnlocked'):
+                token = decryptIf(message, account[1])
+                if token:
+                    acc = ncellapp.ncell(token=token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__']) 
+                    response = acc.viewBalance()
+                    
+                    #! Success
+                    if response.responseDescCode == 'BAL1000':
+                        balanceFormat(message, response.content['queryBalanceResponse'], called)
+                    
+                    #! Invalid refresh token
+                    elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                        if called:
+                            invalidRefreshTokenHandler_cb(message, userId, response.responseDescCode)
+                        else:
+                            invalidRefreshTokenHandler(message, userId, response.responseDescCode)
+                    
+                    #! Unknown error
                     else:
-                        invalidRefreshTokenHandler(message, userId, response.responseDescCode)
-                
-                #! Unknown error
+                        if called:
+                            unknownErrorHandler_cb(message, response.responseDesc, response.statusCode)
+                        else:
+                            unknownErrorHandler(message, response.responseDesc, response.statusCode)
+            
+                #! Error in encryption passphrase
                 else:
-                    if called:
-                        unknownErrorHandler_cb(message, response.responseDesc, response.statusCode)
-                    else:
-                        unknownErrorHandler(message, response.responseDesc, response.statusCode)
-           
-            #! Error in encryption passphrase
+                    lockedAccountHandler(message, called)
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called)
-
+                lockedAccountHandler(message, called)
         else:
             register(message)
 
@@ -701,18 +690,20 @@ def loan(message, called=False):
         userId = dbSql.getUserId(message.from_user.id)
         account = dbSql.getDefaultAc(userId)
 
-        if account:  
-            markup = telebot.types.InlineKeyboardMarkup()
-            markup.one_time_keyboard=True
-        
-            markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'), telebot.types.InlineKeyboardButton('🤝  Confirm loan', callback_data='cb_takeLoan'))
+        if account:
+            if dbSql.getSetting(userId, 'isUnlocked'):
+                markup = telebot.types.InlineKeyboardMarkup()
+                markup.one_time_keyboard=True
+            
+                markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'), telebot.types.InlineKeyboardButton('🤝  Confirm loan', callback_data='cb_takeLoan'))
 
-            if called:
-                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToBalance'))
-                bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['confirmLoan']['en'], reply_markup=markup)
-            else:     
-                bot.send_message(message.from_user.id, language['confirmLoan']['en'], reply_markup=markup)
-
+                if called:
+                    markup.add(telebot.types.InlineKeyboardButton('⬅️ Back', callback_data='cb_backToBalance'))
+                    bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=language['confirmLoan']['en'], reply_markup=markup)
+                else:     
+                    bot.send_message(message.from_user.id, language['confirmLoan']['en'], reply_markup=markup)
+            else:
+                lockedAccountHandler(message, called)
         else:
             if called:
                 bot.delete_message(chat_id=message.message.chat.id, message_id=message.message.id)
@@ -726,28 +717,30 @@ def profile(message):
         account = dbSql.getDefaultAc(userId)
 
         if account:
-            token = decryptIf(message, account[1])
-            
-            if token:
-                acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
-                response = acc.viewProfile()
+            if dbSql.getSetting(userId, 'isUnlocked'):
+                token = decryptIf(message, account[1])
                 
-                #! Success
-                if response.responseDescCode == 'SUB1000':
-                    profileFormat(message, response.content['querySubscriberProfileResponse'])
+                if token:
+                    acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                    response = acc.viewProfile()
+                    
+                    #! Success
+                    if response.responseDescCode == 'SUB1000':
+                        profileFormat(message, response.content['querySubscriberProfileResponse'])
+                    
+                    #! Invalid refresh token
+                    elif response.responseDescCode in ['LGN2003', 'LGN2004']:
+                        invalidRefreshTokenHandler(message, userId, response.responseDescCode)  
+                    
+                    #! Error
+                    else:
+                        unknownErrorHandler(message, response.responseDesc, response.statusCode)
                 
-                #! Invalid refresh token
-                elif response.responseDescCode in ['LGN2003', 'LGN2004']:
-                    invalidRefreshTokenHandler(message, userId, response.responseDescCode)  
-                
-                #! Error
+                #! Error in encryption passphrase
                 else:
-                    unknownErrorHandler(message, response.responseDesc, response.statusCode)
-            
-            #! Error in encryption passphrase
+                    lockedAccountHandler(message, called=False)
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
         else:
             register(message)
 
@@ -773,7 +766,9 @@ def plans(message):
     if isSubscribed(message):
         markup = genMarkup_plans(message)
 
-        if markup:
+        if markup == 'accountIsLocked':
+            lockedAccountHandler(message, called=False)
+        elif markup:
             bot.send_message(message.from_user.id, text=language['selectPlanType']['en'], reply_markup=markup)
         else:
             register(message)
@@ -784,15 +779,18 @@ def genMarkup_plans(message):
     account = dbSql.getDefaultAc(userId)
     
     if account:
-        markup = telebot.types.InlineKeyboardMarkup()
-        markup.one_time_keyboard=True
-        markup.row_width = 2
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            markup = telebot.types.InlineKeyboardMarkup()
+            markup.one_time_keyboard=True
+            markup.row_width = 2
 
-        markup.add(telebot.types.InlineKeyboardButton('Subscribed Plans', callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('Data Plans', callback_data='cb_dataPlans'))    
-        markup.add(telebot.types.InlineKeyboardButton('Voice and Sms', callback_data='cb_plans:voice:'), telebot.types.InlineKeyboardButton('VA Services' ,callback_data='cb_plans:vas:'))    
-        markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
+            markup.add(telebot.types.InlineKeyboardButton('Subscribed Plans', callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('Data Plans', callback_data='cb_dataPlans'))    
+            markup.add(telebot.types.InlineKeyboardButton('Voice and Sms', callback_data='cb_plans:voice:'), telebot.types.InlineKeyboardButton('VA Services' ,callback_data='cb_plans:vas:'))    
+            markup.add(telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
 
-        return markup
+            return markup
+        else:
+            return 'accountIsLocked'
     else:
         return None
 
@@ -856,8 +854,7 @@ def genMarkup_subscribedPlans(message):
         
         #! Error in encryption passphrase
         else:
-            return 'passphraseError'
-
+            return 'accountIsLocked'
     else:
         return None
 
@@ -942,7 +939,7 @@ def genMarkup_products(message):
         
         #! Error in encryption passphrase
         else:
-            return 'passphraseError'
+            return 'accountIsLocked'
     else:
         return None
         
@@ -951,32 +948,44 @@ def genMarkup_products(message):
 def freeSms(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getDefaultAc(userId):
-            sent = bot.send_message(message.from_user.id, language['enterDestinationMsisdn']['en'], reply_markup=cancelReplyKeyboard())
-            bot.register_next_step_handler(sent, sendFreeSms)
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getDefaultAc(userId):
+                sent = bot.send_message(message.from_user.id, language['enterDestinationMsisdn']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, sendFreeSms)
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: Paid SMS
 @bot.message_handler(commands=['paidsms'])
 def paidsms(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getDefaultAc(userId):
-            sent = bot.send_message(message.from_user.id, language['enterDestinationMsisdn']['en'], reply_markup=cancelReplyKeyboard())
-            bot.register_next_step_handler(sent, sendPaidSms)
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getDefaultAc(userId):
+                sent = bot.send_message(message.from_user.id, language['enterDestinationMsisdn']['en'], reply_markup=cancelReplyKeyboard())
+                bot.register_next_step_handler(sent, sendPaidSms)
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: SMS type buttons
 @bot.message_handler(commands=['sms'])
 def sms(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getSetting(userId, 'defaultAcId'):
-            bot.send_message(message.from_user.id, language['sms']['en'], reply_markup=genMarkup_sms())
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getSetting(userId, 'defaultAcId'):
+                bot.send_message(message.from_user.id, language['sms']['en'], reply_markup=genMarkup_sms())
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: SMS Markup
 def genMarkup_sms():
@@ -1056,8 +1065,7 @@ def sendFreeSms2(message):
                 
                 #! Error in encryption passphrase
                 else:
-                    state = dbSql.getTempdata(userId, 'passphraseState')
-                    passphraseErrorHandler(message, state, called=False)
+                    lockedAccountHandler(message, called=False)
             
             else:
                 sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
@@ -1132,8 +1140,7 @@ def sendPaidSms2(message):
             
             #! Error in encryption passphrase
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
         else:
             sent = bot.send_message(message.from_user.id, language['smsTooLong']['en'], reply_markup=cancelReplyKeyboard())
             bot.register_next_step_handler(sent, sendPaidSms2)
@@ -1143,30 +1150,42 @@ def sendPaidSms2(message):
 def selfRecharge(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getDefaultAc(userId):
-            bot.send_message(message.from_user.id, text=language['rechargeMethod']['en'], reply_markup=genMarkup_rechargeMethod('self'))
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getDefaultAc(userId):
+                bot.send_message(message.from_user.id, text=language['rechargeMethod']['en'], reply_markup=genMarkup_rechargeMethod('self'))
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: Recharge others
 @bot.message_handler(commands=['rechargeothers'])
 def rechargeOthers(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getDefaultAc(userId):
-            bot.send_message(message.from_user.id, text=language['rechargeMethod']['en'], reply_markup=genMarkup_rechargeMethod('others'))
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getDefaultAc(userId):
+                bot.send_message(message.from_user.id, text=language['rechargeMethod']['en'], reply_markup=genMarkup_rechargeMethod('others'))
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: Recharge to buttons
 @bot.message_handler(commands=['recharge'])
 def recharge(message):
     if isSubscribed(message):
         userId = dbSql.getUserId(message.from_user.id)
-        if dbSql.getDefaultAc(userId):
-            bot.send_message(message.from_user.id, text=language['rechargeTo']['en'], reply_markup=genMarkup_rechargeTo())
+
+        if dbSql.getSetting(userId, 'isUnlocked'):
+            if dbSql.getDefaultAc(userId):
+                bot.send_message(message.from_user.id, text=language['rechargeTo']['en'], reply_markup=genMarkup_rechargeTo())
+            else:
+                register(message)
         else:
-            register(message)
+            lockedAccountHandler(message, called=False)
 
 #: Markup for recharge to
 def genMarkup_rechargeTo():
@@ -1236,8 +1255,7 @@ def selfPinRecharge(message):
             
             #! Error in encryption passphrase
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
         
         else:
             sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
@@ -1291,8 +1309,7 @@ def selfOnlineRecharge(message):
             
             #! Error in encryption passphrase
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
 
 #: Recharge others with pin
 def rechargeOthersPin(message):
@@ -1372,8 +1389,7 @@ def rechargeOthersPin2(message):
             
             #! Error in encryption passphrase
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
         
         else:
             sent = bot.send_message(message.from_user.id, language['incorrectRpin']['en'], reply_markup=cancelReplyKeyboard())
@@ -1455,8 +1471,7 @@ def rechargeOthersOnline2(message):
             
             #! Error in encryption passphrase
             else:
-                state = dbSql.getTempdata(userId, 'passphraseState')
-                passphraseErrorHandler(message, state, called=False)
+                lockedAccountHandler(message, called=False)
 
 #: Callback handler
 @bot.callback_query_handler(func=lambda call: True)
@@ -1620,8 +1635,7 @@ def callback_query(call):
             else:
                 unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            state = dbSql.getTempdata(userId, 'passphraseState')
-            passphraseErrorHandler(call, state, called=True)
+            lockedAccountHandler(call, called=True)
     
     #! Back to balance
     elif call.data == 'cb_backToBalance':
@@ -1643,9 +1657,8 @@ def callback_query(call):
         userId = dbSql.getUserId(call.from_user.id)
 
         #! Check for passphrase errors
-        if markup == 'passphraseError':
-            state = dbSql.getTempdata(userId, 'passphraseState')
-            passphraseErrorHandler(call, state, called=True)
+        if markup == 'accountIsLocked':
+            lockedAccountHandler(call, called=True)
 
         #! Check if the markup contains error or not 
         elif markup in [ 'LGN2003', 'LGN2004']:
@@ -1714,9 +1727,8 @@ def callback_query(call):
         markup = genMarkup_products(call)
         userId = dbSql.getUserId(call.from_user.id)
 
-        if markup == 'passphraseError':
-            state = dbSql.getTempdata(userId, 'passphraseState')
-            passphraseErrorHandler(call, state, called=True)
+        if markup == 'accountIsLocked':
+            lockedAccountHandler(call, called=True)
 
         elif markup in [ 'LGN2003', 'LGN2004']:
             invalidRefreshTokenHandler_cb(call, userId, responseCode=markup)
@@ -1821,8 +1833,7 @@ def callback_query(call):
             else:
                 unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            state = dbSql.getTempdata(userId, 'passphraseState')
-            passphraseErrorHandler(call, state, called=True)
+            lockedAccountHandler(call, called=True)
 
     #: Activate product
     elif call.data[:15] == 'cb_activatePlan':
@@ -1853,8 +1864,7 @@ def callback_query(call):
             else:
                 unknownErrorHandler_cb(call, response.responseDesc, response.statusCode)
         else:
-            state = dbSql.getTempdata(userId, 'passphraseState')
-            passphraseErrorHandler(call, state, called=True)
+            lockedAccountHandler(call, called=True)
     
     #! Go back to plan catagory
     elif call.data == 'cb_backToPlans':
