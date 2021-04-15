@@ -177,9 +177,6 @@ def lockedAccountHandler(message, called):
     else:
         bot.send_message(message.from_user.id, text=language['accountIsLocked']['en'])
     
-    dbSql.setSetting(userId, 'isUnlocked', None)
-    bot.unpin_all_chat_messages(message.from_user.id)
-
 #: Updating the token in database after refreshing
 def autoRefreshToken(userId, token):
     token = encryptIf(userId, token)
@@ -1510,7 +1507,7 @@ def callback_query(call):
         userId = dbSql.getUserId(call.from_user.id)
         if dbSql.getSetting(userId, 'isUnlocked'):
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-            sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterCurrentPassphrase']['en'], reply_markup=cancelReplyKeyboard())
+            sent = bot.send_message(chat_id=call.message.chat.id, text=language['enterNewPassphrase']['en'], reply_markup=cancelReplyKeyboard())
             bot.register_next_step_handler(sent, changePassphrase)
         else:
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=language['accountIsLocked']['en'])
