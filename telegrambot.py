@@ -312,6 +312,7 @@ def encryptionRemove(message):
                 dbSql.updateAccount(userId, accountId, token)
 
         dbSql.setSetting(userId, 'isEncrypted', None)
+        dbSql.setSetting(userId, 'isUnlocked', True)
         dbSql.setSetting(userId, 'privateKey', None)
         dbSql.setSetting(userId, 'publicKey', None)
         dbSql.setSetting(userId, 'passphraseHash', None)
