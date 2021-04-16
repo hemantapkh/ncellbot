@@ -1849,7 +1849,7 @@ def callback_query(call):
 
         userId = dbSql.getUserId(call.from_user.id)
         account = dbSql.getDefaultAc(userId)
-        token = decryptIf(message, account[1])
+        token = decryptIf(call, account[1])
 
         if token:
             acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
