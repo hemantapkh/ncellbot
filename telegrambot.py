@@ -102,10 +102,8 @@ def mainReplyKeyboard(message):
     button7 = telebot.types.KeyboardButton(text='📦 Plans')
     button8 = telebot.types.KeyboardButton(text='📊 History')
     button9 = telebot.types.KeyboardButton(text='🔃 Switch')
-    button10 = telebot.types.KeyboardButton(text='⚙️ Settings')
     button11 = telebot.types.KeyboardButton(text='⁉️ Help')
     button12 = telebot.types.KeyboardButton(text='🎁 Support')
-    button13 = telebot.types.KeyboardButton(text='🏳️‍🌈 Others')
     button14 = telebot.types.KeyboardButton(text='🔒 Lock')
     button15 = telebot.types.KeyboardButton(text='🔓 Unlock')
 
@@ -116,16 +114,15 @@ def mainReplyKeyboard(message):
     if account:
         if len(account) > 1:
             #!? More than one accounts
-            keyboard.row(button9, button1)
-            keyboard.row(button4, button5, button6)
-            keyboard.row(button6, button7, button13)
+            keyboard.row(button9, button4, button1)
+            keyboard.row(button5, button6, button7)
             
             #!? Lock and unlock buttons for encrypted users
             if dbSql.getSetting(userId, 'isEncrypted'):
                 isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
-                keyboard.row(button10, button14 if isUnlocked else button15, button11)
+                keyboard.row(button14 if isUnlocked else button15,button3, button11)
             else:
-                keyboard.row(button10, button11, button12)
+                keyboard.row(button3, button11, button12)
         else:
             #!? Only one account
             keyboard.row(button4, button5, button1)
@@ -133,15 +130,19 @@ def mainReplyKeyboard(message):
             
             if dbSql.getSetting(userId, 'isEncrypted'):
                 isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
-                keyboard.row(button10, button14 if isUnlocked else button15, button11)
+                keyboard.row(button14 if isUnlocked else button15,button3, button11)
             else:
-                keyboard.row(button10, button11, button12)
+                keyboard.row(button3, button11, button12)
 
     #! Reply keyboard for the users without any account
     else:
         keyboard.row(button2)
-        keyboard.row(button3)
-        keyboard.row(button10, button11, button12)
+        if dbSql.getSetting(userId, 'isEncrypted'):
+            isUnlocked = dbSql.getSetting(userId, 'isUnlocked')
+            keyboard.row(button14 if isUnlocked else button15,button3)
+        else:
+            keyboard.row(button3)
+        keyboard.row(button11, button12)
 
     return keyboard
 
@@ -214,7 +215,7 @@ def encryption(message):
         
     else:
         markup.add(telebot.types.InlineKeyboardButton('Set up encryption', callback_data='cb_encryptionSetup'), telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
-        bot.send_message(message.from_user.id, text=language['encryption']['en'], reply_markup=markup)
+        bot.send_message(message.from_user.id, text=language['setEncryption']['en'], reply_markup=markup)
 
 #: Set up encryption
 def encryptionSetup(message):
@@ -1914,10 +1915,9 @@ def replyKeyboard(message):
 
     elif message.text == '🔃 Switch':
         switch(message)
-      
-    elif message.text in ['⚙️ Settings', '/settings']:
-        text = language['settingsMenu']['en']
-        bot.send_message(message.from_user.id, text)
+
+    elif message.text == '📊 History':
+        bot.send_message(message.from_user.id, language['history']['en'])
 
     elif message.text in ['❌ Cancel','/cancel'] :
         bot.send_message(message.from_user.id, language['cancelled']['en'], reply_markup=mainReplyKeyboard(message))
@@ -1928,6 +1928,7 @@ def replyKeyboard(message):
     elif message.text in ['🎁 Support', '/support']:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton(text='Join our channel', url='t.me/h9youtube'), telebot.types.InlineKeyboardButton(text='Share with friends', url=f"https://t.me/share/url?url=t.me/ncellappbot&text={language['shareText']['en']}"))
+        markup.add(telebot.types.InlineKeyboardButton(text='🗣️ Join our discussion', url='t.me/h9discussion'))
         markup.add(telebot.types.InlineKeyboardButton(text='🌟 Star us on GitHub', url='https://github.com/hemantapkh/ncellbot'))
         markup.add(telebot.types.InlineKeyboardButton(text='📺 Subscribe our channel', url='https://youtube.com/h9youtube'))
 
