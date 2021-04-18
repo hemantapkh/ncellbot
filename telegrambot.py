@@ -165,7 +165,7 @@ def invalidRefreshTokenHandler(message, userId, responseCode):
             
 #: Unknown error handler for callbacks
 def unknownErrorHandler_cb(call, description, statusCode):
-    bot.answer_callback_query(call.id, text=language['unknwonError']['en'].format(description, statusCode), show_alert=True)
+    bot.answer_callback_query(call.id, text=language['unknwonErrorCB']['en'].format(description, statusCode), show_alert=True)
 
 #: Unknown error handler for messages
 def unknownErrorHandler(message, description, statusCode):
@@ -1932,7 +1932,7 @@ def replyKeyboard(message):
         markup.add(telebot.types.InlineKeyboardButton(text='🌟 Star us on GitHub', url='https://github.com/hemantapkh/ncellbot'))
         markup.add(telebot.types.InlineKeyboardButton(text='📺 Subscribe our channel', url='https://youtube.com/h9youtube'))
 
-        bot.send_message(message.from_user.id, language['supportUsMenu']['en'], reply_markup=markup)
+        bot.send_message(message.from_user.id, language['supportUsMenu']['en'], reply_markup=markup, disable_web_page_preview=True)
     
     else:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])

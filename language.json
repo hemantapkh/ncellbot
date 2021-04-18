@@ -65,7 +65,7 @@
     },
 
     "greetFirstTime": {
-        "en": "🙏 Hi {},\n\nI am Ncell Bot 🤖, a <b>free</b> and <b><a href='https://github.com/hemantapkh/ncellbot'>Open Source</a></b> telegram bot. I can help you to use the services of Ncell app from telegram. Please register your number and get started.\n\n<b>Please note that we are in no way affiliated with, authorized, maintained, sponsored, or endorsed by Ncell or any of its affiliates or subsidiaries.</b>",
+        "en": "🙏 Hi {},\n\nI am Ncell Bot 🤖, a <b>free</b> and <b><a href='https://github.com/hemantapkh/ncellbot'>Open Source</a></b> telegram bot. I can help you to use the services of Ncell app from telegram. Please register your number and get started.\n\n<b>Please note that we are in no way affiliated with, authorized, maintained, sponsored, or endorsed by <a href='https://ncell.axiata.com'>Ncell</a> or any of its affiliates or subsidiaries.</b>",
         "np": null
     },
 
@@ -74,8 +74,14 @@
         "np": null
     },
 
+    "setEncryption": {
+        "en": "🔐 <b>Encryption</b>\n\nAre you a paranoid? If yes, you can encrypt your accounts so that your tokens are stored encrypted in the database.",
+        "np": null
+    },
+
+
     "encryption": {
-        "en": "🔐 <b>Encryption</b>\n\nAre you a paranoid? You can encrypt your accounts so that your tokens are stored encrypted in the database.",
+        "en": "🔐 <b>Encryption</b>\n\nHi paranoid, all your accounts are encrypted with 1024 bit RSA algorithm.",
         "np": null
     },
 
@@ -115,7 +121,7 @@
     },
 
     "passphraseChangeSuccess": {
-        "en": "🔐 <b>Encryption Passphrase Changed</b>\n\nYour encryption passphrase for the private key has been changed.\n\n<b>This only changes the encryption passphrase for your private key. If you want to change the private and public key pair, please remove the encryption and set it again.</b>",
+        "en": "🔐 <b>Encryption Passphrase Changed</b>\n\nYour encryption passphrase for the private key has been changed.\n\n<b>This only changes the encryption passphrase for your private key. If you want to change the private and public key pair instead, please remove the encryption and set it again.</b>",
         "np": null
     },
 
@@ -130,12 +136,12 @@
     },
 
     "encryptionRemoved": {
-        "en": "🔓 Encryption for your account is removed successfully. Any existing accounts and new ones will be stored unencrypted in the database.",
+        "en": "🔓 Encryption for your account is removed. Any existing accounts and new ones will be stored unencrypted in the database.",
         "np": null
     },
 
     "accountIsLocked": {
-        "en": "🔒 Your account is encrypted. Please /unlock your account first.",
+        "en": "🔒 Your account is encrypted. Please unlock your account first.",
         "np": null
     },
 
@@ -145,7 +151,7 @@
     },
 
     "unlockedSuccessfully": {
-        "en": "🔓 Your accounts is unlocked.",
+        "en": "🔓 Your accounts is unlocked. You can unpin the message from your side if you wish.",
         "np": null
     },
 
@@ -330,22 +336,27 @@
     },
 
     "loanFailled": {
-        "en": "⚠️ You are not eligiable to take loan.",
+        "en": "⚠️ You are not eligible to take a loan.",
         "np": null
     },
 
     "helpMenu": {
-        "en": "HELP MENU",
-        "np": null
-    },
-
-    "settingsMenu": {
-        "en": "SETTINGS MENU",
+        "en": "<b>⁉️ Help</b>\n\n/start - Start conversation with the bot\n/ping - Ping to know the bot status\n/encryption - Encrypt your accounts\n/register - Register a new number\n/accounts - Manage your accounts\n/balance - View your balance\n/loan - Take loan\n/recharge - Recharge to yourself or others\n/selfrecharge - Recharge to yourself\n/rechargeothers - Recharge to others\n/sms - Send free or paid SMS\n/freesms - Send free SMS\n/paidsms - Send paid SMS\n/plans - Activate or deactivate a product\n/history - View account history\n/help - Show help menu\n/support - Support the developer",
         "np": null
     },
 
     "supportUsMenu": {
-        "en": "SUPPORT MENU",
+        "en": "<b>🎁 Support</b>\n\nIf you like our work and want to support us, subscribe to our <a href='https://youtube.com/h9youtube'>Youtube</a> and <a href='t.me/h9youtube'>Telegram</a> channel. Staring the <a href='https://github.com/hemantapkh/ncellbot'>GitHub repo</a> will surely make my day.😇\n\n🐛 To report bugs or to request a new feature, join our <a href='t.me/h9discussion'>group chat</a>, and let's discuss there. However, If the bug is critical, just let us know and we will send you a private message.",
+        "np": null
+    },
+
+    "shareText": {
+        "en": "Hi there, I am using this bot and it's quite useful for Ncell users. Try it out by clicking the link above. Thank me later😉",
+        "np": null
+    },
+
+    "history": {
+        "en": "<b>📊 History</b>\n\nGet your call history, Balance transfer history, Recharge history, Login history and many more.\n\n<b>COMING SOON</b>",
         "np": null
     },
     
@@ -356,6 +367,11 @@
 
     "unknwonError": {
         "en": "⚠️ <b>Error</b>\n\n{}\n\nError code {}",
+        "np": null
+    },
+
+    "unknwonErrorCB": {
+        "en": "⚠️ Error\n\n{}\n\nError code {}",
         "np": null
     },
 
