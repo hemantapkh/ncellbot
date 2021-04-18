@@ -104,7 +104,7 @@ def mainReplyKeyboard(message):
     button9 = telebot.types.KeyboardButton(text='🔃 Switch')
     button10 = telebot.types.KeyboardButton(text='⚙️ Settings')
     button11 = telebot.types.KeyboardButton(text='⁉️ Help')
-    button12 = telebot.types.KeyboardButton(text='🎁 Support Us')
+    button12 = telebot.types.KeyboardButton(text='🎁 Support')
     button13 = telebot.types.KeyboardButton(text='🏳️‍🌈 Others')
     button14 = telebot.types.KeyboardButton(text='🔒 Lock')
     button15 = telebot.types.KeyboardButton(text='🔓 Unlock')
@@ -1925,8 +1925,13 @@ def replyKeyboard(message):
     elif message.text in ['⁉️ Help', '/help']:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])
 
-    elif message.text in ['🎁 Support Us', '/support']:
-        bot.send_message(message.from_user.id, language['supportUsMenu']['en'])
+    elif message.text in ['🎁 Support', '/support']:
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton(text='Join our channel', url='t.me/h9youtube'), telebot.types.InlineKeyboardButton(text='Share with friends', url=f"https://t.me/share/url?url=t.me/ncellappbot&text={language['shareText']['en']}"))
+        markup.add(telebot.types.InlineKeyboardButton(text='🌟 Star us on GitHub', url='https://github.com/hemantapkh/ncellbot'))
+        markup.add(telebot.types.InlineKeyboardButton(text='📺 Subscribe our channel', url='https://youtube.com/h9youtube'))
+
+        bot.send_message(message.from_user.id, language['supportUsMenu']['en'], reply_markup=markup)
     
     else:
         bot.send_message(message.from_user.id, language['helpMenu']['en'])
