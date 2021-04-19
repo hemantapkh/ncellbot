@@ -81,7 +81,7 @@
 
 
     "encryption": {
-        "en": "🔐 <b>Encryption</b>\n\nHi paranoid, all your accounts are encrypted with 1024 bit RSA algorithm. <em><a href='https://telegra.ph/Privacy-On-Ncell-App-04-19'>learn more</a></em>",
+        "en": "🔐 <b>Encryption</b>\n\nAll your accounts are encrypted with 1024 bit RSA algorithm. <em><a href='https://telegra.ph/Privacy-On-Ncell-App-04-19'>learn more</a></em>",
         "np": null
     },
 
@@ -146,7 +146,7 @@
     },
 
     "lockedSuccessfully": {
-        "en": "<b>🔒 All your accounts is locked and can only be unlocked with your encryption passphrase.</b>",
+        "en": "🔒 All your accounts is locked and can only be unlocked with your encryption passphrase.",
         "np": null
     },
 
