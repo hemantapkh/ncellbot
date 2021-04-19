@@ -211,11 +211,11 @@ def encryption(message):
         
     if dbSql.getSetting(userId, 'isEncrypted'):
         markup.add(telebot.types.InlineKeyboardButton('Change passphrase', callback_data='cb_changePassphrase'), telebot.types.InlineKeyboardButton('Remove encryption', callback_data='cb_encryptionRemove'), telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
-        bot.send_message(message.from_user.id, text=language['encryption']['en'], reply_markup=markup)
+        bot.send_message(message.from_user.id, text=language['encryption']['en'], reply_markup=markup, disable_web_page_preview=True)
         
     else:
         markup.add(telebot.types.InlineKeyboardButton('Set up encryption', callback_data='cb_encryptionSetup'), telebot.types.InlineKeyboardButton('❌ Cancel', callback_data='cb_cancel'))
-        bot.send_message(message.from_user.id, text=language['setEncryption']['en'], reply_markup=markup)
+        bot.send_message(message.from_user.id, text=language['setEncryption']['en'], reply_markup=markup, disable_web_page_preview=True)
 
 #: Set up encryption
 def encryptionSetup(message):
@@ -636,29 +636,32 @@ def balance(message, called=False):
 
 #: Balance parser
 def balanceFormat(message, response, called):
-    text = f"💰 Credit Balance\n\nBalance Rs. {response['creditBalanceDetail']['balance']}\nRecharged On: {response['creditBalanceDetail']['lastRechargeDate']}"
+    text = f"<b>💰 Credit Balance</b>\n\nBalance Rs. {response['creditBalanceDetail']['balance']}\nRecharged On: {response['creditBalanceDetail']['lastRechargeDate']}"
 
     #! If SMS balance
     if response['smsBalanceList']:
-        text += '\n\n💬 SMS Balance\n'
+        text += '\n\n<b>💬 SMS Balance</b>\n'
         #? I don't know the response structure, LOL
         text += str(response['smsBalanceList'])
+        text += '\n<b>Please forward this message to @H9Discussion, so i can fix this.</b>'
 
     #! If data balance
     if response['dataBalanceList']:
-        text += '\n\n🌐 Data Balance\n'
+        text += '\n\n<b>🌐 Data Balance</b>\n'
         #? I don't know the response structure, LOL
         text += str(response['dataBalanceList'])
+        text += '\n<b>Please forward this message to @H9Discussion, so i can fix this.</b>'
 
     #! If voice balance
     if response['voiceBalanceList']:
-        text += '\n\n🎤 Voice Balance\n'
+        text += '\n\n<b>🎤 Voice Balance</b>\n'
         #? Not sure the structure may change for different items
         try:
             for i in response['voiceBalanceList']:
                 text+= f"\n✨{i['ncellName'].capitalize()} {i['freeTalkTime']} {i['talkTimeUom'].lower()}\nExpires on: {i['expDate']}"
         except Exception:
-            text += str(response['voiceBalanceList']) 
+            text += str(response['voiceBalanceList'])
+            text += '\n<b>Please forward this message to @H9Discussion, so i can fix this.</b>'
 
     #! If unpaid loans
     if response['creditBalanceDetail']['loanAmount'] > 0:
@@ -722,7 +725,7 @@ def profile(message):
                 token = decryptIf(message, account[1])
                 
                 if token:
-                    acc = ncellapp.ncell(token=account[1], autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
+                    acc = ncellapp.ncell(token, autoRefresh=True, afterRefresh=[__name__, 'autoRefreshToken'], args=[userId, '__token__'])
                     response = acc.viewProfile()
                     
                     #! Success
@@ -746,20 +749,19 @@ def profile(message):
             register(message)
 
 def profileFormat(message, response):
-    if isSubscribed(message):
-        text = f"{'👦🏻' if response['subscriberDetail']['gender'] == 'M' else '👧🏻'} Customer Profile\n\n"
-        text += f"Name: {response['subscriberDetail']['firstName']} {response['subscriberDetail']['lastName']}\n"
-        text += f"Phone number: {response['subscriberDetail']['msisdn']}\n"
-        
-        if response['subscriberDetail']['email'] != 'updateemail@ncell.com':
-            text += f"Email: {response['subscriberDetail']['email']}\n"
-        
-        text += f"Registered on: {response['subscriberDetail']['registrationPeriod']}\n"
-        
-        if response['subscriberDetail']['profileImage']:
-            text += f"<a href='{response['subscriberDetail']['profileImage']}'>Profile Picture🔻</a>"
+    text = f"{'👦🏻' if response['subscriberDetail']['gender'] == 'M' else '👧🏻'} <b>Customer Profile</b>\n\n"
+    text += f"Name: {response['subscriberDetail']['firstName']} {response['subscriberDetail']['lastName']}\n"
+    text += f"Phone number: {response['subscriberDetail']['msisdn']}\n"
+    
+    if response['subscriberDetail']['email'] != 'updateemail@ncell.com':
+        text += f"Email: {response['subscriberDetail']['email']}\n"
+    
+    text += f"Registered on: {response['subscriberDetail']['registrationPeriod']}\n"
+    
+    if response['subscriberDetail']['profileImage']:
+        text += f"<a href='{response['subscriberDetail']['profileImage']}'>Profile Picture🔻</a>"
 
-        bot.send_message(message.from_user.id, text)
+    bot.send_message(message.from_user.id, text)
 
 #: Plans and products
 @bot.message_handler(commands=['plans'])

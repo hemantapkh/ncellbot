@@ -75,13 +75,13 @@
     },
 
     "setEncryption": {
-        "en": "🔐 <b>Encryption</b>\n\nAre you a paranoid? If yes, you can encrypt your accounts so that your tokens are stored encrypted in the database.",
+        "en": "🔐 <b>Encryption</b>\n\nAre you a paranoid? If yes, you can encrypt your accounts so that your tokens are stored encrypted in the database. <em><a href='https://telegra.ph/Privacy-On-Ncell-App-04-19'>learn more</a></em>",
         "np": null
     },
 
 
     "encryption": {
-        "en": "🔐 <b>Encryption</b>\n\nHi paranoid, all your accounts are encrypted with 1024 bit RSA algorithm.",
+        "en": "🔐 <b>Encryption</b>\n\nHi paranoid, all your accounts are encrypted with 1024 bit RSA algorithm. <em><a href='https://telegra.ph/Privacy-On-Ncell-App-04-19'>learn more</a></em>",
         "np": null
     },
 
@@ -341,7 +341,7 @@
     },
 
     "helpMenu": {
-        "en": "<b>⁉️ Help</b>\n\n/start - Start conversation with the bot\n/ping - Ping to know the bot status\n/encryption - Encrypt your accounts\n/register - Register a new number\n/accounts - Manage your accounts\n/balance - View your balance\n/loan - Take loan\n/recharge - Recharge to yourself or others\n/selfrecharge - Recharge to yourself\n/rechargeothers - Recharge to others\n/sms - Send free or paid SMS\n/freesms - Send free SMS\n/paidsms - Send paid SMS\n/plans - Activate or deactivate a product\n/history - View account history\n/help - Show help menu\n/support - Support the developer",
+        "en": "<b>⁉️ Help</b>\n\n/start - Start conversation with the bot\n/ping - Ping to know the bot status\n/encryption - Encrypt your accounts\n/register - Register a new number\n/accounts - Manage your accounts\n/balance - View your balance\n/loan - Take loan\n/recharge - Recharge balance\n/selfrecharge - Recharge to yourself\n/rechargeothers - Recharge to others\n/sms - Send free or paid SMS\n/freesms - Send free SMS\n/paidsms - Send paid SMS\n/plans - Manage plans and products\n/history - View account history\n/help - Show help menu\n/support - Support the developer",
         "np": null
     },
 
