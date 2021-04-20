@@ -341,7 +341,7 @@
     },
 
     "helpMenu": {
-        "en": "<b>⁉️ Help</b>\n\n/start - Start conversation with the bot\n/ping - Ping to know the bot status\n/encryption - Encrypt your accounts\n/register - Register a new number\n/accounts - Manage your accounts\n/balance - View your balance\n/loan - Take loan\n/recharge - Recharge balance\n/selfrecharge - Recharge to yourself\n/rechargeothers - Recharge to others\n/sms - Send free or paid SMS\n/freesms - Send free SMS\n/paidsms - Send paid SMS\n/plans - Manage plans and products\n/history - View account history\n/help - Show help menu\n/support - Support the developer",
+        "en": "<b>⁉️ Help</b>\n\n/start - Start conversation with the bot\n/ping - Ping to know the bot status\n/encryption - Encrypt your accounts\n/register - Register a new number\n/accounts - Manage your accounts\n/profile - View your profile\n/balance - View your balance\n/loan - Take loan\n/recharge - Recharge balance\n/selfrecharge - Recharge to yourself\n/rechargeothers - Recharge to others\n/sms - Send free or paid SMS\n/freesms - Send free SMS\n/paidsms - Send paid SMS\n/plans - Manage plans and products\n/history - View account history\n/help - Show help menu\n/support - Support the developer",
         "np": null
     },
 
