@@ -14,8 +14,7 @@ print('[+] Database opened successfully.')
 conn.execute('''CREATE TABLE users
          (id        INTEGER PRIMARY KEY AUTOINCREMENT,
          telegramId TEXT,
-         facebookId TEXT,
-         parentId   INTEGER
+         facebookId TEXT
          );''')
 
 print('[+] Table users created successfully.')
@@ -49,7 +48,6 @@ conn.execute('''CREATE TABLE tempdata
          rechargeTo,        TEXT,
          transfterBalanceTo TEXT,
          sendSmsTo          TEXT,
-         shareAcTo          TEXT,
          responseData       TEXT
          );''')
          

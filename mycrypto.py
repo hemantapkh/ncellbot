@@ -1,7 +1,7 @@
 import hashlib
+from Crypto.PublicKey import RSA
 from base64 import b64encode, b64decode
 from Crypto.Cipher import PKCS1_OAEP, AES
-from Crypto.PublicKey import RSA
 
 #: Generate a pair of encrypted privateKey and a publicKey
 def generateKeys(passphrase):
