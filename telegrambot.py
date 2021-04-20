@@ -1708,32 +1708,35 @@ def callback_query(call):
 
         #! Response data is stored in database in b64 encoded form
         encodedResponse = dbSql.getTempdata(userId, 'responseData')
-        decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
+        if encodedResponse:
+            decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
 
-        response = ast.literal_eval(decodedResponse)
+            response = ast.literal_eval(decodedResponse)
 
-        if response['status'] == 'success':
-            response = response['productList']
-            #! Iterate through the response to find the product 
-            productInfo = None
-            for i in response:
-                if i['id'] == productId:
-                    productInfo = i
-                    break
-            
-            if productInfo:
-                markup = telebot.types.InlineKeyboardMarkup()
-                markup.one_time_keyboard=True
-                markup.row_width = 2
+            if response['status'] == 'success':
+                response = response['productList']
+                #! Iterate through the response to find the product 
+                productInfo = None
+                for i in response:
+                    if i['id'] == productId:
+                        productInfo = i
+                        break
+                
+                if productInfo:
+                    markup = telebot.types.InlineKeyboardMarkup()
+                    markup.one_time_keyboard=True
+                    markup.row_width = 2
 
-                markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
-                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
-            
-                text = f"<b>{productInfo['name']}</b>\n\n<em>{productInfo['description']}\n\nSubscribed On: {productInfo['subscriptionDate']}\nExpiry Date: {productInfo['expiryDate']}\n</em>"
-                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+                    markup.add(telebot.types.InlineKeyboardButton(text='Deactivate' if i['isDeactivationAllowed'] == 1 else '⛔ Deactivate', callback_data=f"cb_deactivatePlan:{i['subscriptionCode']}" if i['isDeactivationAllowed'] == 1 else 'cb_deactivationNotAllowed'))
+                    markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data='cb_subscribedPlans'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
+                
+                    text = f"<b>{productInfo['name']}</b>\n\n<em>{productInfo['description']}\n\nSubscribed On: {productInfo['subscriptionDate']}\nExpiry Date: {productInfo['expiryDate']}\n</em>"
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
 
-            else:
-                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+                else:
+                    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        else:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         
         #! Invalid refresh token
         elif response['status'] in ['LGN2003', 'LGN2004']:
@@ -1777,41 +1780,44 @@ def callback_query(call):
 
         #! Response data is stored in database in b64 encoded form
         encodedResponse = dbSql.getTempdata(userId, 'responseData')
-        decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
+        if encodedResponse:
+            decodedResponse = base64.b64decode(encodedResponse.encode()).decode()
 
-        response = ast.literal_eval(decodedResponse)
+            response = ast.literal_eval(decodedResponse)
 
-        if response['status'] == 'success':
-            response = response['availablePackages']
-            #! Iterate through the response to find the product 
-            productInfo = None
-            for i in response:
-                if i['id'] == productId:
-                    productInfo = i
-                    break
-            
-            if productInfo:
-                planType = call.data.split(':')[2]
-                catagoryId = call.data.split(':')[3]
-                markup = telebot.types.InlineKeyboardMarkup()
-                markup.one_time_keyboard=True
-                markup.row_width = 2
-
-                markup.add(telebot.types.InlineKeyboardButton(text='Activate' if productInfo['isBalanceSufficient'] else '⛔ Activate', callback_data=f"cb_activatePlan:{productInfo['techInfo']['subscriptionCode']}" if productInfo['isBalanceSufficient'] else 'cb_noEnoughBalanceToSub'))
-                markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data=f'cb_plans:{planType}:{catagoryId}'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
-
-                summary = '</em>\nSummery:\n<em>' if productInfo['accounts'] else ''
+            if response['status'] == 'success':
+                response = response['availablePackages']
+                #! Iterate through the response to find the product 
+                productInfo = None
+                for i in response:
+                    if i['id'] == productId:
+                        productInfo = i
+                        break
                 
-                for i in productInfo['accounts']:
-                    summary += f"👉 {i['name']} {i['amount']} {i['amountUom']} valid for {i['validity']}{i['validityUom']}\n"
-                
-                summary += f"\n💰 {productInfo['productOfferingPrice']['priceUom']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['price']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['priceType']}"
+                if productInfo:
+                    planType = call.data.split(':')[2]
+                    catagoryId = call.data.split(':')[3]
+                    markup = telebot.types.InlineKeyboardMarkup()
+                    markup.one_time_keyboard=True
+                    markup.row_width = 2
 
-                text = f"<b>{productInfo['displayInfo']['displayName']}</b>\n\n<em>{productInfo['displayInfo']['description']}\n{summary}</em>"
-                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+                    markup.add(telebot.types.InlineKeyboardButton(text='Activate' if productInfo['isBalanceSufficient'] else '⛔ Activate', callback_data=f"cb_activatePlan:{productInfo['techInfo']['subscriptionCode']}" if productInfo['isBalanceSufficient'] else 'cb_noEnoughBalanceToSub'))
+                    markup.add(telebot.types.InlineKeyboardButton('⬅️ Back' ,callback_data=f'cb_plans:{planType}:{catagoryId}'), telebot.types.InlineKeyboardButton('❌ Cancel' ,callback_data='cb_cancel'))
 
-            else:
-                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+                    summary = '</em>\nSummery:\n<em>' if productInfo['accounts'] else ''
+                    
+                    for i in productInfo['accounts']:
+                        summary += f"👉 {i['name']} {i['amount']} {i['amountUom']} valid for {i['validity']}{i['validityUom']}\n"
+                    
+                    summary += f"\n💰 {productInfo['productOfferingPrice']['priceUom']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['price']} {'' if productInfo['productOfferingPrice']['priceUom'] == 'FREE' else productInfo['productOfferingPrice']['priceType']}"
+
+                    text = f"<b>{productInfo['displayInfo']['displayName']}</b>\n\n<em>{productInfo['displayInfo']['description']}\n{summary}</em>"
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
+
+                else:
+                    bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        else:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         
         #! Invalid refresh token
         elif response['status'] in ['LGN2003', 'LGN2004']:
