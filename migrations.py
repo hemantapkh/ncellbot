@@ -44,9 +44,7 @@ print('[+] Table accounts created successfully.')
 conn.execute('''CREATE TABLE tempdata
          (ownerId           INTEGER PRIMARY KEY,
          registerMsisdn     TEXT,
-         rechargePin        TEXT,
          rechargeTo,        TEXT,
-         transfterBalanceTo TEXT,
          sendSmsTo          TEXT,
          responseData       TEXT
          );''')

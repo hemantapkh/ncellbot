@@ -159,3 +159,10 @@ class dbQuery():
             cur.execute(f'INSERT OR IGNORE INTO tempdata (ownerId, {var}) VALUES ({userId}, {value})')
             cur.execute(f'UPDATE tempdata SET {var}={value} WHERE ownerId={userId}')
             con.commit()
+
+    #: Delete all temporary data of a user
+    def deleteAllTempdata(self, userId):
+        with sqlite3.connect(self.db) as con:
+            cur = con.cursor()
+            cur.execute(f'DELETE FROM tempdata WHERE ownerId={userId}')
+            con.commit()

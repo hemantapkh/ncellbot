@@ -360,11 +360,6 @@
         "np": null
     },
     
-    "somethingWrong": {
-        "en": "⚠️ Something went wrong!",
-        "np": null
-    },
-
     "unknwonError": {
         "en": "⚠️ <b>Error</b>\n\n{}\n\nError code {}",
         "np": null

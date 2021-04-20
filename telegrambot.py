@@ -149,6 +149,7 @@ def mainReplyKeyboard(message):
 #: Cancel handler
 def cancelKeyboardHandler(message):
     bot.send_message(message.from_user.id, '❌ Cancelled', reply_markup=mainReplyKeyboard(message))
+    dbSql.deleteAllTempdata(dbSql.getUserId(message.from_user.id))
 
 #: Invalid refresh token handler for callbacks
 def invalidRefreshTokenHandler_cb(call, userId, responseCode):
@@ -156,20 +157,24 @@ def invalidRefreshTokenHandler_cb(call, userId, responseCode):
     dbSql.deleteAccount(userId, accountId)
     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
     bot.send_message(call.message.chat.id, language['newLoginFound']['en'] if responseCode=='LGN2003' else language['sessionExpired']['en'], reply_markup=mainReplyKeyboard(call))
+    dbSql.deleteAllTempdata(userId)
 
 #: Invalid refresh token handler for messages
 def invalidRefreshTokenHandler(message, userId, responseCode):
     accountId = dbSql.getSetting(userId, 'defaultAcId')
     dbSql.deleteAccount(userId, accountId)
     bot.send_message(message.from_user.id, language['newLoginFound']['en'] if responseCode=='LGN2003' else language['sessionExpired']['en'], reply_markup=mainReplyKeyboard(message))
-            
+    dbSql.deleteAllTempdata(userId)
+
 #: Unknown error handler for callbacks
 def unknownErrorHandler_cb(call, description, statusCode):
     bot.answer_callback_query(call.id, text=language['unknwonErrorCB']['en'].format(description, statusCode), show_alert=True)
+    dbSql.deleteAllTempdata(dbSql.getUserId(call.from_user.id))
 
 #: Unknown error handler for messages
 def unknownErrorHandler(message, description, statusCode):
     bot.send_message(message.from_user.id, text=language['unknwonError']['en'].format(description, statusCode), reply_markup=mainReplyKeyboard(message))
+    dbSql.deleteAllTempdata(dbSql.getUserId(message.from_user.id))
 
 #: Locked account handler
 def lockedAccountHandler(message, called):
@@ -177,6 +182,8 @@ def lockedAccountHandler(message, called):
         bot.answer_callback_query(message.id, text=language['accountIsLocked']['en'], show_alert=True)
     else:
         bot.send_message(message.from_user.id, text=language['accountIsLocked']['en'])
+    
+    dbSql.deleteAllTempdata(dbSql.getUserId(message.from_user.id))
     
 #: Updating the token in database after refreshing
 def autoRefreshToken(userId, token):
@@ -1049,10 +1056,12 @@ def sendFreeSms2(message):
                         #! Daily 10 free SMS exceed
                         elif response.content['sendFreeSMSResponse']['statusCode'] == '1':
                             bot.send_message(message.from_user.id, language['freeSmsExceed']['en'], reply_markup=mainReplyKeyboard(message))
+                            dbSql.setTempdata(userId, 'sendSmsTo', None)
                         
                         #! Error sending SMS to off net numbers
                         elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
                             bot.send_message(message.from_user.id, language['offnetNumberSmsError']['en'], reply_markup=mainReplyKeyboard(message))
+                            dbSql.setTempdata(userId, 'sendSmsTo', None)
                         
                         #! Unknown error
                         else:
@@ -1124,10 +1133,12 @@ def sendPaidSms2(message):
                     #! Error no sufficient balance
                     elif response.content['sendFreeSMSResponse']['statusCode'] == '4':
                         bot.send_message(message.from_user.id, language['smsErrorInsufficientBalance']['en'], reply_markup=mainReplyKeyboard(message))
+                        dbSql.setTempdata(userId, 'sendSmsTo', None)
                     
                     #! Error sending SMS to off net numbers
                     elif response.content['sendFreeSMSResponse']['statusCode'] == '3':
                         bot.send_message(message.from_user.id, language['offnetNumberError']['en'], reply_markup=mainReplyKeyboard(message))
+                        dbSql.setTempdata(userId, 'sendSmsTo', None)
                     
                     #! Unknown error
                     else:
@@ -1367,6 +1378,7 @@ def rechargeOthersPin2(message):
                     #! Success
                     if response.content['isRechargeSuccess']:
                         bot.send_message(message.from_user.id, language['rechargeSuccess']['en'], reply_markup=mainReplyKeyboard(message))
+                        dbSql.setTempdata(userId, 'rechargeTo', None)
                     
                     #? For recharge others, ncell response with same responsecode. So, compairing with description.
                     # FIX THIS NCELL :))
@@ -1458,7 +1470,8 @@ def rechargeOthersOnline2(message):
                 #! Success
                 if response.responseDescCode == 'OPS1000':
                     bot.send_message(message.from_user.id, text=f"<a href='{response.content['url']}'>Click here</a> and complete the payment.", reply_markup=mainReplyKeyboard(message))
-                
+                    dbSql.setTempdata(userId, 'rechargeTo', None)
+
                 #! Invalid number
                 elif response.responseDescCode in ['OPS2104', 'OPS2003']:
                     sent = bot.send_message(message.from_user.id, language['invalidNumber']['en'], reply_markup=cancelReplyKeyboard())
@@ -1482,6 +1495,7 @@ def callback_query(call):
     #! Cancel a process
     if call.data == 'cb_cancel':
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text='❌ Cancelled')
+        dbSql.deleteAllTempdata(dbSql.getUserId(call.from_user.id))
     
     #! Check whether a user is subscribed or not after clicking button
     elif call.data[:15] == 'cb_isSubscribed':
@@ -1719,7 +1733,7 @@ def callback_query(call):
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
 
             else:
-                bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         
         #! Invalid refresh token
         elif response['status'] in ['LGN2003', 'LGN2004']:
@@ -1797,7 +1811,7 @@ def callback_query(call):
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.id, text=text, reply_markup=markup)
 
             else:
-                bot.answer_callback_query(call.id, language['somethingWrong']['en'])
+                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
         
         #! Invalid refresh token
         elif response['status'] in ['LGN2003', 'LGN2004']:
