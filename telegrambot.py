@@ -1735,16 +1735,17 @@ def callback_query(call):
 
                 else:
                     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        
+            #! Invalid refresh token
+            elif response['status'] in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler_cb(call, userId, response['status'])
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+        
         else:
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        
-        #! Invalid refresh token
-        elif response['status'] in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler_cb(call, userId, response['status'])
-        
-        #! Unknown error
-        else:
-            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Data plans Catagory
     elif call.data == 'cb_dataPlans':
@@ -1816,16 +1817,17 @@ def callback_query(call):
 
                 else:
                     bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
+        
+            #! Invalid refresh token
+            elif response['status'] in ['LGN2003', 'LGN2004']:
+                invalidRefreshTokenHandler_cb(call, userId, response['status'])
+            
+            #! Unknown error
+            else:
+                unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
+        
         else:
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.id)
-        
-        #! Invalid refresh token
-        elif response['status'] in ['LGN2003', 'LGN2004']:
-            invalidRefreshTokenHandler_cb(call, userId, response['status'])
-        
-        #! Unknown error
-        else:
-            unknownErrorHandler_cb(call, response['responseDesc'], response['statusCode'])
 
     #! Deactivation not allowed
     elif call.data == 'cb_deactivationNotAllowed':
