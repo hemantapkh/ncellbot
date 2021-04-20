@@ -53,13 +53,13 @@ The bot is designed in a way to protect the privacy of users. You can learn more
 
 <b>Currently, the latest version of [Ncell App](https://github.com/hemantapkh/ncellapp) is not open-sourced yet. I will try to release a new version as soon as possible.</b>
 
-* Clone the repository, create a virtual environment, and install the requirements.
+* Clone the repository, create a virtual environment, and install the requirements
 
     ```bash
     git clone https://github.com/hemantapkh/ncellbot && virtualenv ncellenv && source ncellenv/bin/activate && cd ncellbot && pip install -r requirements.txt
     ```
 
-* Add your bot token in [config.json](config.json) file.
+* Add your bot token in [config.json](config.json) file
 * Run the [migration.py](migrations.py) file to open a database.
 
     ```python
@@ -77,7 +77,7 @@ The bot is designed in a way to protect the privacy of users. You can learn more
 
 While polling and webhooks both accomplish the same task, webhooks are far more efficient. Polling sends a request for new events (specifically, Create, Retrieve, and Delete events, which signal changes in data) at a predetermined frequency and waits for the endpoint to respond whereas, webhooks only transfer data when there is new data to send, making them 100% efficient. That means that polling creates, on average, 66x more server load than webhooks. ([r](https://blog.cloud-elements.com/webhooks-vs-polling-youre-better-than-this))
 
-- Generate an SSL certificate.
+- Generate an SSL certificate
 
     ```bash
     >> openssl genrsa -out sslPrivateKey.pem 2048
@@ -116,7 +116,7 @@ You can set up GitHub actions to update the bot automatically on every push.
 
     *You should create a directory with the same name as above inside /opt, or edit the [deploy.yml](.github/workflows/deploy.yml) and [deployScript.sh](.github/workflows/deployScript.sh)*
 
-- Create a virtual environment in the directory with name **ncellenv**
+- Create a virtual environment in the directory with name `ncellenv`
 
     ```bash
     virtualenv ncellenv
@@ -128,7 +128,7 @@ You can set up GitHub actions to update the bot automatically on every push.
     git clone https://github.com/hemantapkh/ncellbot && cd ncellbot && source /opt/ncell/ncellenv/bin/activate && pip install -r requirements.txt
     ```
 
-- Create a database and move the database into **/opt/ncell**
+- Create a database and move the database into `/opt/ncell`
 
     ```bash
     python migrations.py && mv database.sqlite /opt/ncell
@@ -136,21 +136,21 @@ You can set up GitHub actions to update the bot automatically on every push.
 
 - Generate SSH keys for your VPS and keep the private key in your GitHub secrets
 
-    - Create the ssh key pair using the **ssh-keygen** command. You must leave the passphrase empty while generating the SSH key.
-    - Copy and install the public ssh key on the server using **sh-copy-id -i your_public_key user@host** command.
-    - Now, copy the content of the private key and paste it on your GitHub secrets with the name **SSHKEY**. *(Repository settings >> secrets >> New repository secret)*
+    - Create the ssh key pair using the `ssh-keygen` command. You must leave the passphrase empty while generating the SSH key.
+    - Copy and install the public ssh key on the server using `sh-copy-id -i your_public_key user@host` command.
+    - Now, copy the content of the private key and paste it on your GitHub secrets with the name `SSHKEY`. *(Repository settings >> secrets >> New repository secret)*
 
-- Create another GitHub secret with name **HOST** and save your Host IP.
+- Create another GitHub secret with name `HOST` and save your Host IP.
 
 - Edit [config.json](config.json) file and set
 
     - **database** = **/opt/ncell/database.sqlite**
     - **errorLog** =  **/opt/ncell/telegram.errors.logs**
-    - If you are using webhooks, copy the SSL certificate and private key in **/opt/ncell** and set
+    - If you are using webhooks, copy the SSL certificate and private key in `/opt/ncell` and set
         - **sslCertificate** == **/opt/ncell/sslCertificate.pem**
         - **sslPrivateKey** == **/opt/ncell/sslPrivateKey.pem**
 
-- Copy the content of the edited config.json and save it on your repository secrets with name **CONFIG**. Don't forget to wrap the content of config file with single quotes like this **'Content of config.json'**.
+- Copy the content of the edited config.json and save it on your repository secrets with name `CONFIG`. Don't forget to wrap the content of config file with single quotes like this `'Content of config.json'`.
 
 - And, start the bot.
 
@@ -158,7 +158,7 @@ You can set up GitHub actions to update the bot automatically on every push.
     source /opt/ncell/ncellenv/bin/activate && screen -dm python /opt/ncell/ncellbot/telegrambot.py
     ```
 
-Now, every time you push on the **main** branch, the bot automatically gets updated.
+Now, every time you push on the `main` branch, the bot automatically gets updated.
 
 ---
 

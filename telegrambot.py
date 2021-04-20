@@ -1930,9 +1930,9 @@ def replyKeyboard(message):
     elif message.text in ['🎁 Support', '/support']:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton(text='Join our channel', url='t.me/h9youtube'), telebot.types.InlineKeyboardButton(text='Share with friends', url=f"https://t.me/share/url?url=t.me/ncellappbot&text={language['shareText']['en']}"))
-        markup.add(telebot.types.InlineKeyboardButton(text='🗣️ Join our discussion', url='t.me/h9discussion'))
-        markup.add(telebot.types.InlineKeyboardButton(text='🌟 Star us on GitHub', url='https://github.com/hemantapkh/ncellbot'))
-        markup.add(telebot.types.InlineKeyboardButton(text='📺 Subscribe our channel', url='https://youtube.com/h9youtube'))
+        markup.add(telebot.types.InlineKeyboardButton(text='🗣️ Join our discussion chat', url='t.me/h9discussion'))
+        markup.add(telebot.types.InlineKeyboardButton(text='🌟 Star the GitHub repo', url='https://github.com/hemantapkh/ncellbot'))
+        markup.add(telebot.types.InlineKeyboardButton(text='📺 Subscribe Us', url='https://youtube.com/h9youtube'))
 
         bot.send_message(message.from_user.id, language['supportUsMenu']['en'], reply_markup=markup, disable_web_page_preview=True)
     
