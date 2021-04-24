@@ -655,9 +655,13 @@ def balanceFormat(message, response, called):
     #! If data balance
     if response['dataBalanceList']:
         text += '\n\n<b>🌐 Data Balance</b>\n'
-        #? I don't know the response structure, LOL
-        text += str(response['dataBalanceList'])
-        text += '\n<b>Please forward this message to @H9Discussion, so i can fix this.</b>'
+
+        try:
+            for i in response['dataBalanceList']:
+                text+= f"\n✨{i['ncellName'].capitalize()} {i['balance']} {i['uom']}\nExpires on: {i['expDate']}"
+        except Exception:
+            text += str(response['dataBalanceList'])
+            text += '\n<b>Please forward this message to @H9Discussion, so i can fix this.</b>'
 
     #! If voice balance
     if response['voiceBalanceList']:
@@ -672,7 +676,7 @@ def balanceFormat(message, response, called):
 
     #! If unpaid loans
     if response['creditBalanceDetail']['loanAmount'] > 0:
-        text += f"\n\n💸 Loan\n\nLoan amount Rs. {response['creditBalanceDetail']['loanAmount']}\nLoan taken on: {response['creditBalanceDetail']['lastLoanTakenDate']}"
+        text += f"\n\n<b>💸 Loan</b>\n\nLoan amount Rs. {response['creditBalanceDetail']['loanAmount']}\nLoan taken on: {response['creditBalanceDetail']['lastLoanTakenDate']}"
         
         if called:
             bot.edit_message_text(chat_id=message.message.chat.id, message_id=message.message.id, text=text)
